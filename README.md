@@ -21,6 +21,55 @@ use pnpm only, keep secrets out of git, and leave merging, releasing and deployi
 Agents load a skill automatically when the request matches its description. You can also ask for
 one by name: "use paperplane-shipping-changes".
 
+## Engineering workflow
+
+### From a change to `develop`
+
+Every change, by hand or by an agent, takes this path (guide §2–4, §6–7).
+
+```mermaid
+flowchart TD
+  A["Start from latest develop<br/>git switch -c feature/topic"] --> B["Verify with the repo's scripts<br/>pnpm test · pnpm lint<br/>mobile: iOS and Android"]
+  B --> C["Commit type(scope): summary<br/>stage files by name"]
+  C --> E["Person running the agent<br/>reviews the full diff"]
+  E --> F["Push the branch<br/>PR into develop, AI-assisted: yes"]
+  F --> G{"CI: pnpm only · secret scan · PR title"}
+  G -->|"green"| R{"Reviewer: not the author,<br/>not who prompted the agent<br/>paperplane-reviewing-prs"}
+  R -->|"approved"| D[("develop<br/>squash and merge")]
+  G -->|"secret found"| S["paperplane-secret-incidents<br/>tell the CTO, rotate, fix the code"]
+  G -->|"other check red"| X["Fix on the branch<br/>new commit"]
+  R -->|"changes needed"| X
+  S --> X
+  X -.-> C
+```
+
+Agents run every step except the review and the merge. They stop after showing the diff and push
+only when the person says go.
+
+### From `develop` to production
+
+Releases and hotfixes belong to the CTO (guide §2, §8). Agents prepare the PRs and write out the
+commands; the CTO merges, tags and deploys (`paperplane-releasing`).
+
+```mermaid
+flowchart LR
+  subgraph release["Release"]
+    direction LR
+    D[develop] -->|"PR chore(release): uat YYYY-MM-DD<br/>merge commit"| U[uat]
+    U -->|"tested on UAT<br/>PR chore(release): prod YYYY-MM-DD<br/>merge commit"| M[main]
+    M -->|"tag prod-YYYY.MM.DD<br/>deploy that tag"| P[(production)]
+  end
+  subgraph hotfix["Hotfix"]
+    direction LR
+    H["hotfix/topic<br/>from main"] -->|"PR, CTO merges<br/>tag and deploy"| HM[main]
+    HM -->|"merge back by PR<br/>merge commits"| B["uat and develop"]
+  end
+```
+
+Release PRs use merge commits, never squash, so `uat` and `main` stay identical to `develop`.
+A second release on the same day is tagged `prod-YYYY.MM.DD.2`. Rollback means deploying the previous
+`prod-*` tag. Mobile store builds are tagged `app-vX.Y.Z` on the commit that was submitted.
+
 ## Which skills for your role
 
 The guide has three human roles and no rules by job title. Full-stack, backend, frontend, mobile,
