@@ -215,8 +215,8 @@ change the skill, and confirm agents with the skill pass it.
 5. Check locally, then open a PR into `main`; CI runs the same checks:
 
 ```bash
-for s in skills/*/; do
-  uvx --from "git+https://github.com/agentskills/agentskills#subdirectory=skills-ref" skills-ref validate "$s"
+for s in skills/*/SKILL.md; do
+  uvx --from "git+https://github.com/agentskills/agentskills#subdirectory=skills-ref" skills-ref validate "$(dirname "$s")"
 done
 shellcheck -S warning skills/*/scripts/*.sh skills/*/hooks/*.sh skills/paperplane-shipping-changes/hooks/git-pre-push \
   tests/scripts/*.sh tests/drift/*.sh

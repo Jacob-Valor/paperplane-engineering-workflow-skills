@@ -19,8 +19,8 @@ jobs:
 
       - name: Validate every skill against the Agent Skills spec
         run: |
-          for s in skills/*/; do
-            uvx --from "git+https://github.com/agentskills/agentskills#subdirectory=skills-ref" skills-ref validate "$s"
+          for s in skills/*/SKILL.md; do
+            uvx --from "git+https://github.com/agentskills/agentskills#subdirectory=skills-ref" skills-ref validate "$(dirname "$s")"
           done
 
       - name: Lint scripts and hooks
