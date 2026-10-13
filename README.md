@@ -1,7 +1,7 @@
 # Paper Plane engineering workflow skills
 
 [![validate](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml/badge.svg)](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml)
-Version **v2026.10.13.3**, matching the guide of 2026-10-13 and [`team-workflow-13-oct-2026.html`](team-workflow-13-oct-2026.html) · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
+Version **v2026.10.13.3**, matching the guide of 2026-10-13 and the team workflow page of 2026-10-13 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
 
 Agent skills that encode the [Paper Plane engineering guide](https://github.com/paperplanehq/paperplane-engineering)
 for every repository in the `paperplanehq` GitHub org. They follow the
