@@ -2,6 +2,12 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.13.3
+
+### Fixed
+- The git pre-push hook blocked force-pushes of your own branch, which `team-workflow-13-oct-2026.html` §5 allows for people ("rebase the next PR onto develop and push"). It now allows them; `install-git-hook.sh --block-force-push` turns the block on for clones only agents push from. Agents still never force-push (skill rule and Claude Code guard).
+- `team-workflow-13-oct-2026.html` Part D: status cells for `mobile: true` and CODEOWNERS now match the org audit; new row for the hooks.
+
 ## v2026.10.13.2
 
 ### Added

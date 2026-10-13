@@ -1,7 +1,7 @@
 # Paper Plane engineering workflow skills
 
 [![validate](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml/badge.svg)](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml)
-Version **v2026.10.13.2**, matching the guide of 2026-10-13 and [`team-workflow-13-oct-2026.html`](team-workflow-13-oct-2026.html) · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
+Version **v2026.10.13.3**, matching the guide of 2026-10-13 and [`team-workflow-13-oct-2026.html`](team-workflow-13-oct-2026.html) · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
 
 Agent skills that encode the [Paper Plane engineering guide](https://github.com/paperplanehq/paperplane-engineering)
 for every repository in the `paperplanehq` GitHub org. They follow the
@@ -53,8 +53,10 @@ Skills tell an agent the rules; hooks enforce them. Install both once per machin
 
 ```bash
 # In each repo clone: a git pre-push hook for people and agents alike.
-# Blocks pushes to develop/uat/main and force-pushes; runs pre-push.sh (secrets, lockfiles, .env,
-# build output). Tags are not blocked. An existing pre-push hook keeps running.
+# Blocks pushes to develop/uat/main; runs pre-push.sh (secrets, lockfiles, .env, build output).
+# Tags and force-pushes of your own branch are allowed (the guide lets people rebase).
+# An existing pre-push hook keeps running. In a clone only agents push from, add
+# --block-force-push to block force-pushes too.
 bash <skills>/paperplane-shipping-changes/hooks/install-git-hook.sh
 
 # Once per machine, for Claude Code: blocks gh pr merge (incl. --auto), approvals, force-push,

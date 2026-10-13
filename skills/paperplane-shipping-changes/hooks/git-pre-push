@@ -4,15 +4,17 @@
 #   bash <skill>/hooks/install-git-hook.sh
 # Git calls it as: pre-push <remote-name> <url>, with one line per ref on stdin:
 #   <local_ref> <local_sha> <remote_ref> <remote_sha>
-# It blocks: pushes or deletes of develop/uat/main, non-fast-forward (force)
-# branch updates, and branch pushes that fail scripts/pre-push.sh or gitleaks.
+# It blocks: pushes or deletes of develop/uat/main, and branch pushes that fail
+# scripts/pre-push.sh or gitleaks. Force-pushing your own branch is allowed (the guide
+# lets people rebase their branches); it is blocked only when the clone sets
+# `git config paperplane.blockForcePush true` (install-git-hook.sh --block-force-push).
 # Tag pushes pass (release tags are pushed by hand and limited by the org ruleset).
 # A foreign hook saved as pre-push.local next to this file runs first.
 # Exit codes: 0 push allowed · 1 push blocked
 set -uo pipefail
 
 case "${1:-}" in
-  -h|--help) sed -n '3,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
 
 # install-git-hook.sh writes PAPERPLANE_SKILL_DIR above; run from the skill, use its parent.
@@ -71,7 +73,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   is_zero "$local_sha" && continue  # deleting your own branch
   name=${remote_ref#refs/heads/}
 
-  if ! is_zero "$remote_sha"; then
+  if ! is_zero "$remote_sha" && [ "$(git config --bool paperplane.blockForcePush 2>/dev/null)" = true ]; then
     if ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
       block "$name on $remote has commits you do not have; run 'git fetch $remote' and merge them, never force-push"
       continue
@@ -81,20 +83,25 @@ while read -r local_ref local_sha remote_ref remote_sha; do
       continue
     fi
   fi
+  # Commits new to the remote: after a rebase the old tip is not an ancestor, so scan
+  # everything the remote does not have yet.
+  if ! is_zero "$remote_sha" && git cat-file -e "$remote_sha^{commit}" 2>/dev/null \
+     && git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+    range="$remote_sha..$local_sha"
+  else
+    range="$local_sha --not --remotes=$remote"
+  fi
 
   if [ -n "$current" ] && { [ "$local_ref" = "refs/heads/$current" ] || [ "$local_ref" = HEAD ]; }; then
     bash "$skill_dir/scripts/pre-push.sh" </dev/null
     case $? in
       0|3) ;;
       2) echo "warning: pre-push.sh could not run here; scanning the pushed commits only"
-         if is_zero "$remote_sha"; then scan_range "$name" "$local_sha --not --remotes=$remote"
-         else scan_range "$name" "$remote_sha..$local_sha"; fi ;;
+         scan_range "$name" "$range" ;;
       *) fail=1 ;;
     esac
-  elif is_zero "$remote_sha"; then
-    scan_range "$name" "$local_sha --not --remotes=$remote"
   else
-    scan_range "$name" "$remote_sha..$local_sha"
+    scan_range "$name" "$range"
   fi
 done <<EOF
 $input

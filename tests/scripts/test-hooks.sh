@@ -46,15 +46,20 @@ expect "git hook: delete of uat blocked" 1 git push -q origin :uat
 expect "git hook: delete of main blocked" 1 git push -q origin --delete main
 
 git commit -q --amend -m "feat(x): b2"
-expect "git hook: force push blocked" 1 git push -q --force origin feature/x
-expect "git hook: +refspec blocked" 1 git push -q origin +feature/x
+expect "git hook: force push of your own branch allowed by default (people may rebase)" 0 git push -q --force origin feature/x
+
+expect "git hook: install --block-force-push" 0 bash "$H/install-git-hook.sh" --block-force-push
+check "git hook: --block-force-push sets the clone option" test "$(git config --bool paperplane.blockForcePush)" = true
+git commit -q --amend -m "feat(x): b3"
+expect "git hook: force push blocked with --block-force-push" 1 git push -q --force origin feature/x
+expect "git hook: +refspec blocked with --block-force-push" 1 git push -q origin +feature/x
 git reset -q --hard origin/feature/x
 
 git clone -q "$work/origin.git" "$work/other" 2>/dev/null
 ( cd "$work/other" && git config user.email o@example.com && git config user.name O &&
   git switch -q feature/x && echo c > c && git add c && git commit -qm "feat(x): c" && git push -q --no-verify origin feature/x )
 echo d > d; git add d; git commit -qm "feat(x): d"
-expect "git hook: force over unfetched commits blocked" 1 git push -q --force origin feature/x
+expect "git hook: force over unfetched commits blocked with --block-force-push" 1 git push -q --force origin feature/x
 git fetch -q origin; git merge -q --no-edit origin/feature/x
 expect "git hook: push after merge allowed" 0 git push -q origin feature/x
 
@@ -77,6 +82,7 @@ fi
 # Chaining a foreign hook
 expect "git hook: uninstall" 0 bash "$H/install-git-hook.sh" --uninstall
 check "git hook: uninstall removes it" test ! -e .git/hooks/pre-push
+check "git hook: uninstall unsets paperplane.blockForcePush" test -z "$(git config --get paperplane.blockForcePush)"
 printf '#!/bin/sh\necho "foreign $1" >> "%s/foreign.log"; cat >> "%s/foreign.log"; exit "${FOREIGN_EXIT:-0}"\n' "$work" "$work" > .git/hooks/pre-push
 chmod +x .git/hooks/pre-push
 expect "git hook: install over a foreign hook" 0 bash "$H/install-git-hook.sh"

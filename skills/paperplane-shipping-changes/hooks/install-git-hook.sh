@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 # Installs (or removes) the paperplane git pre-push hook in the current repo.
-# Usage: bash hooks/install-git-hook.sh [--uninstall]
+# Usage: bash hooks/install-git-hook.sh [--block-force-push] [--uninstall]
 # Respects core.hooksPath. An existing pre-push hook that is not ours moves to
 # pre-push.local and keeps running first. Running it again updates the hook.
-# --uninstall removes our hook and puts pre-push.local back as pre-push.
+# --block-force-push also blocks non-fast-forward pushes in this clone (for clones only
+#   agents push from; people may rebase and force-push their own branches).
+# --uninstall removes our hook, unsets that option and puts pre-push.local back.
 # Exit codes: 0 done · 1 could not install · 2 usage error or not in a git repo
 set -uo pipefail
 
-usage() { sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; }
 uninstall=0
+block_force=0
 for arg in "$@"; do
   case "$arg" in
     --uninstall) uninstall=1 ;;
+    --block-force-push) block_force=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $arg"; usage; exit 2 ;;
   esac
@@ -31,6 +35,7 @@ chained="$hooks/pre-push.local"
 ours() { [ -f "$1" ] && grep -qxF "$marker" "$1"; }
 
 if [ "$uninstall" -eq 1 ]; then
+  git config --unset paperplane.blockForcePush 2>/dev/null || true
   if ours "$hook"; then
     rm -f "$hook" && echo "removed $hook"
   elif [ -e "$hook" ]; then
@@ -67,3 +72,6 @@ while IFS= read -r line || [ -n "$line" ]; do
 done <"$src" >"$tmp" || { rm -f "$tmp"; echo "cannot write $hook"; exit 1; }
 chmod +x "$tmp" && mv "$tmp" "$hook" || { rm -f "$tmp"; echo "cannot write $hook"; exit 1; }
 echo "installed $hook (skill: $skill_dir)"
+if [ "$block_force" -eq 1 ]; then
+  git config paperplane.blockForcePush true && echo "force-pushes are blocked in this clone"
+fi
