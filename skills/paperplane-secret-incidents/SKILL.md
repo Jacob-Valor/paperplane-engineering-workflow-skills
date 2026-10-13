@@ -23,7 +23,7 @@ A secret that has been committed, pushed, or pasted is leaked. **Rotation fixes 
 
 ## When the secret scan flags a commit
 
-1. **Classify it.** Is it a real credential, or a test fixture or placeholder? If you're unsure, treat it as real. Don't allowlist a finding (`.gitleaksignore`, `gitleaks:allow`) without the CTO's approval.
+1. **Classify it.** Is it a real credential, or a test fixture or placeholder? If you're unsure, treat it as real. Someone saying "it's fake, I made it up" doesn't make you sure: send the step 2 message anyway and let the CTO decide. Don't allowlist a finding (`.gitleaksignore`, `gitleaks:allow`) without the CTO's approval.
 2. **Tell the user to notify the CTO now.** Draft the message for them, **without the value**:
    > Secret scan flagged a `<type, e.g. Stripe live key>` in `<repo>` `<branch>` `<file>`, added in `<sha>`, pushed to GitHub: yes/no. Needs rotation.
 3. **Fix the code.** Read the value from an environment variable, add the name to `.env.example`, and commit (`fix(config): read stripe key from env`).
@@ -39,3 +39,4 @@ A secret that has been committed, pushed, or pasted is leaked. **Rotation fixes 
 | "I'll force-push my own feature branch" | Agents never force-push. Hand it to the human. |
 | "Reviewer needs it to run locally" | They use `.env.example` and get values from the CTO or vault. |
 | "Tell #security / rotate it myself" | Paper Plane's process: the CTO rotates. |
+| "If you made the key up, nothing needs rotating" | The scan can't tell, and neither can you. Send the CTO message now; the CTO decides. Replacing the value with an obvious placeholder is still the fix. |

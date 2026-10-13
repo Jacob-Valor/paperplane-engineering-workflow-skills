@@ -2,6 +2,22 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.13.2
+
+### Added
+- **Hooks** (`paperplane-shipping-changes/hooks/`): a git `pre-push` hook (blocks pushes to `develop`/`uat`/`main` and force-pushes, runs `pre-push.sh`, chains an existing hook) and a Claude Code `PreToolUse` guard (blocks merge, auto-merge, approve, force-push, protected-branch and release-tag pushes, `--no-verify`, `git add -A`, repo-setting changes, npm/yarn/bun in pnpm repos). Installers for both, with `--uninstall`.
+- `repo-setup/scripts/audit.sh`: PASS/FAIL audit of one repo against the standard.
+- `reviewing-prs/scripts/gather.sh`: PR, body, checks, files, unresolved threads, authors, stack and diff in one command.
+- `releasing/scripts/next-tag.sh`: next `prod-`/`uat-` tag, CTO warning at `.3`, `--previous` for rollback.
+- `tests/eval/run.py`: runs the scenarios through `claude -p` and grades them.
+- `tests/drift/check.sh` and `.github/workflows/drift.yml`: weekly check that the skills still match the live guide.
+- Scenarios S13 (second release in a day) and S14 (hook blocks a push).
+
+### Changed
+- Skills call the new scripts instead of listing raw `gh`/`git` commands.
+- **shipping-changes**: never use `--no-verify` or bypass a hook; install the git hook once per clone.
+- **secret-incidents**: "it's fake, I made it up" doesn't classify a finding; send the CTO message anyway.
+
 ## v2026.10.13.1
 
 Brings the skills in line with `team-workflow-13-oct-2026.html`.

@@ -17,12 +17,10 @@ A human reviewer approves; the PR is **squash-merged** by the reviewer or by aut
 ## Gather
 
 ```bash
-gh pr view N --json title,body,isDraft,baseRefName,headRefName,additions,deletions,files,commits
-gh pr checks N
-gh pr diff N
-gh api graphql -F o=paperplanehq -F r=<repo> -F n=N -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){nodes{isResolved}}}}}' \
-  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length'   # unresolved threads
+bash <skill>/scripts/gather.sh N paperplanehq/<repo>   # <skill> = the folder this SKILL.md is in
 ```
+
+It prints, in order: the PR (state, draft, base, head, size), the body, `gh pr checks`, changed files, the number of **unresolved review threads**, commit authors, the **stack** (if the base isn't `develop`/`uat`/`main`: the PR below, whether it is a draft, and the depth), then the diff. Read all of it before the checklist.
 
 ## Checklist (every item is a blocker unless marked)
 

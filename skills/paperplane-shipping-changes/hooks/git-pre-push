@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# paperplane-pre-push
+# Git pre-push hook for paperplanehq repos. Install it with:
+#   bash <skill>/hooks/install-git-hook.sh
+# Git calls it as: pre-push <remote-name> <url>, with one line per ref on stdin:
+#   <local_ref> <local_sha> <remote_ref> <remote_sha>
+# It blocks: pushes or deletes of develop/uat/main, non-fast-forward (force)
+# branch updates, and branch pushes that fail scripts/pre-push.sh or gitleaks.
+# Tag pushes pass (release tags are pushed by hand and limited by the org ruleset).
+# A foreign hook saved as pre-push.local next to this file runs first.
+# Exit codes: 0 push allowed · 1 push blocked
+set -uo pipefail
+
+case "${1:-}" in
+  -h|--help) sed -n '3,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+
+# install-git-hook.sh writes PAPERPLANE_SKILL_DIR above; run from the skill, use its parent.
+skill_dir="${PAPERPLANE_SKILL_DIR:-}"
+[ -d "$skill_dir/scripts" ] || skill_dir=$(cd "$(dirname "$0")/.." && pwd)
+remote="${1:-origin}"
+input=$(cat)
+
+local_hook="$(dirname "$0")/pre-push.local"
+if [ -x "$local_hook" ]; then
+  if ! printf '%s\n' "$input" | "$local_hook" "$@"; then
+    echo "BLOCKED: the chained hook $local_hook failed"
+    exit 1
+  fi
+elif [ -e "$local_hook" ]; then
+  echo "warning: $local_hook is not executable; skipped it (chmod +x to run it)"
+fi
+
+[ -n "$input" ] || exit 0
+
+fail=0
+block() { echo "BLOCKED: $*"; fail=1; }
+is_zero() { case "$1" in *[!0]*|'') return 1 ;; *) return 0 ;; esac; }
+
+current=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+
+scan_range() { # scan_range <branch> <log-opts>
+  command -v gitleaks >/dev/null 2>&1 || {
+    echo "gitleaks not installed: read 'git log -p $2' for keys before pushing $1"
+    return 0
+  }
+  local out
+  out=$(gitleaks git --no-banner --redact --log-opts="$2" . 2>&1 </dev/null)
+  if [ $? -ne 0 ]; then
+    printf '%s\n' "$out" | grep -E 'leaks found|Finding|RuleID|File|Commit' | head -20
+    block "gitleaks found a secret in $1; follow paperplane-secret-incidents, never repeat the value"
+  else
+    echo "gitleaks: no leaks in $1"
+  fi
+}
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -n "${remote_ref:-}" ] || continue
+  case "$remote_ref" in
+    refs/tags/*) continue ;;
+    refs/heads/develop|refs/heads/uat|refs/heads/main)
+      if is_zero "$local_sha"; then
+        block "deleting ${remote_ref#refs/heads/} on $remote; protected branches change only through PRs"
+      else
+        block "pushing to ${remote_ref#refs/heads/} on $remote; push a feature/fix/chore branch and open a PR"
+      fi
+      continue ;;
+    refs/heads/*) ;;
+    *) continue ;;
+  esac
+  is_zero "$local_sha" && continue  # deleting your own branch
+  name=${remote_ref#refs/heads/}
+
+  if ! is_zero "$remote_sha"; then
+    if ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+      block "$name on $remote has commits you do not have; run 'git fetch $remote' and merge them, never force-push"
+      continue
+    fi
+    if ! git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+      block "non-fast-forward push to $name; merge $remote/$name into your branch instead of force-pushing"
+      continue
+    fi
+  fi
+
+  if [ -n "$current" ] && { [ "$local_ref" = "refs/heads/$current" ] || [ "$local_ref" = HEAD ]; }; then
+    bash "$skill_dir/scripts/pre-push.sh" </dev/null
+    case $? in
+      0|3) ;;
+      2) echo "warning: pre-push.sh could not run here; scanning the pushed commits only"
+         if is_zero "$remote_sha"; then scan_range "$name" "$local_sha --not --remotes=$remote"
+         else scan_range "$name" "$remote_sha..$local_sha"; fi ;;
+      *) fail=1 ;;
+    esac
+  elif is_zero "$remote_sha"; then
+    scan_range "$name" "$local_sha --not --remotes=$remote"
+  else
+    scan_range "$name" "$remote_sha..$local_sha"
+  fi
+done <<EOF
+$input
+EOF
+
+exit "$fail"

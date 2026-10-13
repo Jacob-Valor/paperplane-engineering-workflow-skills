@@ -1,0 +1,25 @@
+name: drift
+
+on:
+  schedule:
+    - cron: "0 2 * * 1" # Mondays 02:00 UTC
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: skills match the engineering guide
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Explain the token
+        run: |
+          echo "Drift check reads paperplanehq/paperplane-engineering with the ORG_READ_TOKEN secret: a fine-grained PAT with read-only Contents on paperplanehq/paperplane-engineering. Without it, pull requests skip the check and scheduled or manual runs fail." >> "$GITHUB_STEP_SUMMARY"
+      - name: Compare skills with the guide
+        env:
+          GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
+          DRIFT_ALLOW_SKIP: ${{ github.event_name == 'pull_request' && '1' || '' }}
+        run: bash tests/drift/check.sh

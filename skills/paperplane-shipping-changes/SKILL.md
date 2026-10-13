@@ -31,12 +31,13 @@ Deadlines and explicit requests don't change these. Only the CTO (Pay) can grant
 | `npm`, `yarn`, `bun install`, `npx` in a pnpm repo | `pnpm install`, `pnpm add`, `pnpm exec` |
 | Native change or tooling bump inside another PR | Its own PR |
 | Third PR in a stack | Wait for the bottom PR to merge, or branch from `develop` |
+| `--no-verify`, or editing, removing or bypassing a hook that blocked you | Fix what it found. A secret → **paperplane-secret-incidents**; an allowlist entry needs the CTO |
 
 **A fast PR is the fast path.** "Demo in 10 minutes" means branch, commit, push, draft PR. The demo runs from the branch. If it can't wait for review, that's the CTO's call.
 
 ## Workflow
 
-1. **Identity**: `git config --show-origin --get user.email` is the human's own. Someone else's in `.git/config`: stop and tell the user.
+1. **Identity**: `git config --show-origin --get user.email` is the human's own. Someone else's in `.git/config`: stop and tell the user. Once per clone, install the pre-push hook: `bash <skill>/hooks/install-git-hook.sh` (local to `.git/hooks`; an existing hook keeps running). It runs the same checks as step 5 on every push and blocks pushes to `develop`/`uat`/`main` and force-pushes.
 2. **Branch** from fresh `develop`: `git switch develop && git pull && git switch -c <feature|fix|chore>/<topic>`. Uncommitted work on `develop`: `git switch -c fix/<topic>` carries it. Hotfix → **paperplane-releasing**.
 3. **Verify** with the scripts in AGENTS.md. App repos (TripBuddy, Sanaam, Studio): iOS **and** Android, devices named. Report real results.
 4. **Commit** one logical change as `type(scope): summary`: type `feat|fix|chore|docs|refactor|perf|test|build|ci|revert`, lowercase scope, under 72 characters, no full stop. "Fixed OTP" becomes `fix(auth): otp resend waits for the cooldown`.

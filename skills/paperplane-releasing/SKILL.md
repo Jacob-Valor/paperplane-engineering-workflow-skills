@@ -40,11 +40,11 @@ gh pr create --base uat  --head develop --title "chore(release): uat 2026-10-09"
 gh pr create --base main --head uat     --title "chore(release): prod 2026-10-09" --body "<…> Rollback: deploy <previous prod tag>"
 ```
 
-**Tag name**: run `git fetch --tags && git tag -l 'prod-2026.10.09*'`.
+**Tag name**: `bash <skill>/scripts/next-tag.sh` (`<skill>` = the folder this SKILL.md is in; it fetches tags first, prints the next name, never creates a tag). Add `--date YYYY-MM-DD` for another day, `--prefix uat` for UAT tags.
 
 - No tags for today: `prod-2026.10.09`
 - `prod-2026.10.09` exists: `prod-2026.10.09.2`
-- `.2` exists too: `.3` (the guide only shows `.2`, so confirm `.3` with the CTO)
+- `.2` exists too: `.3`, and the script warns to confirm it with the CTO (the guide only shows `.2`). Say so to the CTO.
 
 Never use `v…` prefixes, semver, or `gh release create`.
 
@@ -59,7 +59,7 @@ git switch main && git pull && git tag prod-2026.10.09.2 && git push origin prod
 
 If the repo's AGENTS.md tags UAT releases, add `uat-YYYY.MM.DD` on `uat` the same way.
 
-**Rollback** means deploying the previous `prod-*` tag (`git tag -l 'prod-*' --sort=-creatordate`). Never revert by force-pushing `main`.
+**Rollback** means deploying the previous `prod-*` tag (`bash <skill>/scripts/next-tag.sh --previous`). Never revert by force-pushing `main`.
 
 ## Hotfix
 

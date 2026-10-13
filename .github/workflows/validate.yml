@@ -23,8 +23,11 @@ jobs:
             uvx --from "git+https://github.com/agentskills/agentskills#subdirectory=skills-ref" skills-ref validate "$s"
           done
 
-      - name: Lint skill scripts
-        run: shellcheck -S warning skills/*/scripts/*.sh tests/scripts/*.sh
+      - name: Lint scripts and hooks
+        run: |
+          shellcheck -S warning skills/*/scripts/*.sh skills/*/hooks/*.sh skills/paperplane-shipping-changes/hooks/git-pre-push \
+            tests/scripts/*.sh tests/drift/*.sh
+          python3 -m py_compile tests/eval/run.py
 
       - name: Install gitleaks
         env:

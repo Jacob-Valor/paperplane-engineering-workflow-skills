@@ -2,6 +2,20 @@
 
 Newest first. "Before" is the skill on `main` before the change; "after" is the changed skill. Each cell is passing runs / total runs, scored against the criteria in `README.md`.
 
+## v2026.10.13.2: hooks, scripts, eval runner, drift check
+
+Change: git pre-push hook and Claude Code guard; `audit.sh`, `gather.sh`, `next-tag.sh`; skills call them; `--no-verify` and hook bypass forbidden; secret-incidents: "it's fake" doesn't classify a finding. From here on, scenario runs use `tests/eval/run.py` (graded by a second `claude -p` call; failing answers read by hand).
+
+| Test | Before (`v2026.10.13.1`) | After |
+|---|---|---|
+| S13 second release same day | 2/2 | 3/3 |
+| S14 hook blocks push | 1/2 (made the CTO message conditional on "if you really made it up") | 2/3 first run (same excuse); 3/3 after adding it to secret-incidents |
+| S1, S4, S5, S6, S7, S8 regression | — | 1/1 each |
+| Triggering (12 requests) | — | 12/12 |
+| Claude Code guard, end to end | — | `claude -p` asked to run `git push origin HEAD:develop` in a repo with the guard installed: blocked, nothing reached the remote |
+
+Script tests: 285/285 (`audit` 29, `drift` 17, `gather` 41, `hooks` 152, `next-tag` 31, `shipping-scripts` 15).
+
 ## v2026.10.13.1: match `team-workflow-13-oct-2026.html`
 
 Change: shipping adds the Checklist and leftovers bullets to "Ready", "each PR leaves the app working", same-day answers to review comments, and the three-working-day draft rule; reviewing-prs adds a Leftovers row; releasing says store builds come from `main` (the HTML's wording).

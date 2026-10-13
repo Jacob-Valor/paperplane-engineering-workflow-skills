@@ -17,14 +17,10 @@ The standard is applied by **copying** what `paperplanehq/paperplane-engineering
 ## 1. Audit
 
 ```bash
-R=paperplanehq/<repo>
-gh api "repos/$R" --jq '{default_branch,allow_merge_commit,allow_squash_merge,allow_rebase_merge,allow_auto_merge,delete_branch_on_merge}'
-gh api "repos/$R/branches" --jq '.[].name'                  # develop, uat, main present?
-gh api "repos/$R/rulesets" --jq '.[].name'                  # expect protect-develop-uat-main
-gh api "repos/$R/contents" --jq '.[].name'                  # default branch: AGENTS.md CLAUDE.md .env.example pnpm-lock.yaml …
-gh api "repos/$R/contents/.github" --jq '.[].name'          # CODEOWNERS, pull_request_template.md?
-gh api -H "Accept: application/vnd.github.raw" "repos/$R/contents/.github/workflows/standard.yml"  # matches the template? app repo: mobile: true?
+bash <skill>/scripts/audit.sh paperplanehq/<repo>   # <skill> = the folder this SKILL.md is in; read-only
 ```
+
+One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; merge settings (squash and merge commit on, rebase off, delete branch on merge, auto-merge allowed); the `protect-develop-uat-main` ruleset; `AGENTS.md`, `CLAUDE.md`, `.env.example`, PR template, `pnpm-lock.yaml` and no other lockfile; CODEOWNERS with two owners per line; `standard.yml` calling `standard-checks.yml@develop`, with `ready_for_review` and, for app repos (`app.json`/`eas.json` found, or `--app`), `mobile: true`. Exit 1 means at least one FAIL. Every FAIL maps to a section below.
 
 **Order** (the "pnpm only" check fails while another lockfile exists):
 

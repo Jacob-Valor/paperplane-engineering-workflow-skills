@@ -1,7 +1,7 @@
 # Paper Plane engineering workflow skills
 
 [![validate](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml/badge.svg)](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml)
-Version **v2026.10.13.1**, matching the guide of 2026-10-13 and [`team-workflow-13-oct-2026.html`](team-workflow-13-oct-2026.html) · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
+Version **v2026.10.13.2**, matching the guide of 2026-10-13 and [`team-workflow-13-oct-2026.html`](team-workflow-13-oct-2026.html) · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
 
 Agent skills that encode the [Paper Plane engineering guide](https://github.com/paperplanehq/paperplane-engineering)
 for every repository in the `paperplanehq` GitHub org. They follow the
@@ -27,15 +27,44 @@ one by name: "use paperplane-shipping-changes".
 ## Repository layout
 
 ```
-skills/<name>/SKILL.md          the skill (frontmatter + instructions)
-skills/<name>/scripts/*.sh      checks the skill runs with `bash` (shipping-changes only)
-tests/scenarios/                agent pressure scenarios S1–S12
-tests/triggering.md             do the descriptions pick the right skill?
-tests/README.md                 how to run them and the pass criteria
-tests/RESULTS.md                before/after scores for every change
-tests/scripts/run.sh            behaviour tests for the scripts (CI)
-.github/workflows/validate.yml  spec validation, shellcheck, script tests
+skills/<name>/SKILL.md                    the skill (frontmatter + instructions)
+skills/<name>/scripts/*.sh                checks the skill runs with `bash`
+  shipping-changes/scripts/pre-push.sh    branch, lockfiles, .env, build output, gitleaks before a push
+  shipping-changes/scripts/check-pr-body.sh  the CI "PR body is complete" rules, locally
+  reviewing-prs/scripts/gather.sh         everything a reviewer needs for one PR
+  releasing/scripts/next-tag.sh           next prod-/uat- tag name, or the rollback tag
+  repo-setup/scripts/audit.sh             PASS/FAIL audit of one repo against the standard
+skills/paperplane-shipping-changes/hooks/ git pre-push hook and Claude Code guard, with installers
+tests/scenarios/                          agent pressure scenarios S1–S14
+tests/triggering.md                       do the descriptions pick the right skill?
+tests/README.md                           how to run them and the pass criteria
+tests/RESULTS.md                          before/after scores for every change
+tests/eval/run.py                         runs the scenarios through `claude -p` and grades them
+tests/scripts/                            behaviour tests for every script and hook (CI)
+tests/drift/check.sh                      do the skills still match the live guide?
+.github/workflows/validate.yml            spec validation, shellcheck, script tests
+.github/workflows/drift.yml               weekly drift check (needs the ORG_READ_TOKEN secret)
 ```
+
+## Hooks (recommended for everyone)
+
+Skills tell an agent the rules; hooks enforce them. Install both once per machine or clone.
+`<skills>` is where the skills are installed, e.g. `~/.agents/skills`.
+
+```bash
+# In each repo clone: a git pre-push hook for people and agents alike.
+# Blocks pushes to develop/uat/main and force-pushes; runs pre-push.sh (secrets, lockfiles, .env,
+# build output). Tags are not blocked. An existing pre-push hook keeps running.
+bash <skills>/paperplane-shipping-changes/hooks/install-git-hook.sh
+
+# Once per machine, for Claude Code: blocks gh pr merge (incl. --auto), approvals, force-push,
+# pushes to develop/uat/main, release tags, --no-verify, git add -A, repo setting changes,
+# and npm/yarn/bun in pnpm repos. Use --project instead for one repo only.
+bash <skills>/paperplane-shipping-changes/hooks/install-claude-hook.sh --user
+```
+
+Both have `--uninstall`. `git push --no-verify` skips the git hook; the skills forbid it, and the
+Claude Code guard blocks it.
 
 ## Engineering workflow
 
@@ -170,8 +199,14 @@ change the skill, and confirm agents with the skill pass it.
    messages, and a one-line reason for each choice. Give only facts the agent would see (repo files,
    `gh` output); never state the rule being tested, or the baseline passes for the wrong reason. Add
    its pass criteria to `tests/README.md`.
-2. Run it on fresh agents, at least 3 with the skill and 2 without. If agents without the skill
-   already behave correctly, there is nothing to fix.
+2. Run it without and with the change, at least 2 and 3 times. The runner does both through
+   `claude -p` and grades each answer against the pass criteria (read every failing answer yourself):
+   ```bash
+   python3 tests/eval/run.py --scenarios s14 --reps 2 --skill-ref main   # before (the current skills)
+   python3 tests/eval/run.py --scenarios s14 --reps 3                    # after (working tree)
+   python3 tests/eval/run.py --trigger --reps 1                          # after a description change
+   ```
+   If agents without the change already behave correctly, there is nothing to fix.
 3. Edit the `SKILL.md`. Put the excuses agents gave, word for word, in its **Rationalizations** table.
 4. Re-run until every run with the skill passes. Record the before/after scores in
    `tests/RESULTS.md` and the change in `CHANGELOG.md`.
@@ -181,8 +216,10 @@ change the skill, and confirm agents with the skill pass it.
 for s in skills/*/; do
   uvx --from "git+https://github.com/agentskills/agentskills#subdirectory=skills-ref" skills-ref validate "$s"
 done
-shellcheck -S warning skills/*/scripts/*.sh tests/scripts/*.sh
+shellcheck -S warning skills/*/scripts/*.sh skills/*/hooks/*.sh skills/paperplane-shipping-changes/hooks/git-pre-push \
+  tests/scripts/*.sh tests/drift/*.sh
 bash tests/scripts/run.sh
+bash tests/drift/check.sh       # skills still match the live guide (needs read access to the org)
 pnpm dlx skills add . --list    # every skill still discovered
 ```
 
@@ -195,6 +232,6 @@ Rules for `SKILL.md`:
 - Frontmatter also carries `license: Proprietary`, `metadata.author` and `metadata.guide-version`
   (the guide date the skill matches); `compatibility` only when the skill needs tools.
 - Anything a regex or exit code can check goes in a script under `scripts/`, called with `bash`,
-  with a test in `tests/scripts/run.sh`.
+  with a test in `tests/scripts/test-<name>.sh`.
 - Keep the body under 500 lines. Quote the guide; don't invent policy. If the guide changes,
   update the skill and `guide-version` in the same PR or the next one.
