@@ -1,2 +1,3 @@
 tests/eval/out/
 team-workflow-*.html
+__pycache__/
