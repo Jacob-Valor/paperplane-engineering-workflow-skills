@@ -7,14 +7,14 @@ description: Use when asked to release, ship, or promote a paperplanehq reposito
 
 ## Overview
 
-Releases belong to the CTO (Pay). **Agents never merge, promote, tag production, deploy, or force-push.** That holds even when the CTO asks you directly or you have admin `gh` access. Your job is to prepare the release so the CTO only has to approve and run it. That means you:
+Releases belong to the CTO (Pay). **Agents never merge, promote, tag production, deploy, start store builds, turn on auto-merge, or force-push.** That holds even when the CTO asks you directly or you have admin `gh` access. Your job is to prepare the release so the CTO only has to approve and run it. That means you:
 
 - check readiness
 - open the release PRs with the correct titles
 - compute the tag name
 - write out the exact commands for the CTO to run
 
-The org ruleset `protect-develop-uat-main` requires a PR with 1 approval on `develop`, `uat` and `main`. It allows only squash and merge commits, and blocks force-pushes and branch deletion.
+The org ruleset `protect-develop-uat-main` requires a PR with 1 code-owner approval and every review thread resolved on `develop`, `uat` and `main`; a new push dismisses earlier approvals. It allows only squash and merge commits, and blocks force-pushes and branch deletion. The org ruleset `release-tags-owner-only` blocks creating, moving or deleting `prod-*` and `uat-*` tags for everyone but org admins.
 
 ## Flow
 
@@ -59,12 +59,12 @@ If the repo's AGENTS.md tags UAT releases, add `uat-YYYY.MM.DD` on `uat` the sam
 ## Hotfix
 
 1. The CTO agrees it's a hotfix. Then: `git switch main && git pull && git switch -c hotfix/<topic>`.
-2. Fix it, commit as `fix(scope): …`, push, and open a PR into **`main`** (`AI-assisted: yes`). The CTO merges it and tags `prod-YYYY.MM.DD[.N]`.
-3. Merge back into the other branches with PRs from `main` into `uat` and from `main` into `develop`, using **merge commits**. The CTO merges them.
+2. Fix it, commit as `fix(scope): …`, push, and open a **draft** PR into **`main`** (`AI-assisted: yes`). It goes ready after the human reviews the diff, as in **paperplane-shipping-changes**. The CTO merges it and tags `prod-YYYY.MM.DD[.N]`.
+3. **Same day**, merge back with PRs from `main` into `uat` and from `main` into `develop`, using **merge commits**. Open them right after the hotfix merges; the CTO merges them that day. Until then the next release would ship without the fix.
 
 ## Mobile store builds
 
-Tag the exact commit that was submitted to the store: `app-vX.Y.Z`. The CTO or release owner pushes the tag.
+Store builds come from `main` at a `prod-*` tag; UAT builds come from `uat`. A hotfix that isn't merged back yet is only on `main`, so build from its tag. Tag the exact commit submitted to the store: `app-vX.Y.Z`. The CTO or release owner starts the build and pushes the tag; you write out the commands.
 
 ## Rationalizations
 
@@ -74,3 +74,4 @@ Tag the exact commit that was submitted to the store: `app-vX.Y.Z`. The CTO or r
 | "Squash keeps history clean" | Release PRs need merge commits, or the branches diverge. |
 | "`v2026.10.09.2` is conventional" | The format is `prod-YYYY.MM.DD[.N]` (existing tags: `prod-2026.10.01`, `prod-2026.10.01.2`). |
 | "Hotfix is urgent, push to main" | It's still a PR. The ruleset rejects direct pushes. |
+| "Merging is the step that can wait; merge them Friday" | Merge-back is same-day. Open the PRs now and ask the CTO to merge them today. |
