@@ -35,12 +35,14 @@ Deadlines and explicit requests don't change these. Only the CTO (Pay) can grant
 2. **Branch** from fresh `develop`: `git switch develop && git pull && git switch -c <feature|fix|chore>/<topic>`. Uncommitted work on `develop`: `git switch -c fix/<topic>` carries it. Hotfix → **paperplane-releasing**.
 3. **Verify** with the scripts in AGENTS.md. App repos (TripBuddy, Sanaam, Studio): iOS **and** Android, devices named. Report real results.
 4. **Commit** one logical change as `type(scope): summary`: type `feat|fix|chore|docs|refactor|perf|test|build|ci|revert`, lowercase scope, under 72 characters, no full stop. "Fixed OTP" becomes `fix(auth): otp resend waits for the cooldown`.
-5. **Draft PR the same day**:
+5. **Draft PR the same day**. A pushed secret is leaked, and nobody has read the diff yet, so scan first:
    ```bash
+   git fetch origin
+   gitleaks git --no-banner --redact --log-opts="origin/develop..HEAD"   # exit 1: don't push → paperplane-secret-incidents
    git push -u origin <branch>
    gh pr create --draft --base develop --title "<type(scope): summary>" --body-file pr-body.md
    ```
-   Body = the repo's `.github/pull_request_template.md`, every heading kept, `- Commands:`/`- iOS:`/`- Android:` lines kept (CI reads them).
+   No `gitleaks` installed: read the full `git diff origin/develop...HEAD` for keys before pushing. Body = the repo's `.github/pull_request_template.md`, every heading kept, `- Commands:`/`- iOS:`/`- Android:` lines kept (CI reads them).
 6. **Hand over**: show the full diff (`git diff origin/develop...HEAD`) and the PR URL. End your turn.
 7. **Ready**: only after the human says they reviewed the diff, and only when the body is complete:
    - How I verified it: commands and real results; iOS and Android devices, or `not a mobile change`. An untested platform keeps it draft.
@@ -73,4 +75,5 @@ Deadlines and explicit requests don't change these. Only the CTO (Pay) can grant
 | "Pushing before the review skips the required human review" | The review gate is Ready, not the push. Push and open the draft the same day. |
 | "The PR opens ready for review, which matches 'mark it ready'" | Always draft first. Ready only after their go-ahead on the diff. |
 | "A PR into a feature branch has no review gate, so no stacking" | Two-deep stacks are allowed; the upper PR is reviewed and merges after the one below. |
+| "`git diff --stat` shows no `.env` or key files" | A key inside a source file never shows in `--stat`. Scan the content before the push. |
 | "The reviewer prefers one big PR" | Native changes and tooling bumps go alone. |

@@ -105,7 +105,7 @@ Agents follow the same rules as developers (§7), with less authority:
 | Agents do | A person does instead |
 |---|---|
 | Work on a feature branch; commit as `type(scope): summary`; stage files by name | — |
-| Push their branch the same day and open a **draft** PR into `develop` marked `AI-assisted: yes` | — |
+| Scan the new commits with `gitleaks`, then push their branch the same day and open a **draft** PR into `develop` marked `AI-assisted: yes` | — |
 | Show the person running them the full diff; mark the PR ready only after their go-ahead | That person reviews every line before Ready |
 | — | The author turns on auto-merge; a code owner approves; the PR squash-merges |
 | Merge `develop` into a stacked branch after the PR below merges | A person rebases and force-pushes, if they prefer |
@@ -120,19 +120,23 @@ when the CTO is the one asking.
 
 ## Install
 
-The skills are installed from the private repo `paperplanehq/paperplane-engineering` once they are
-merged into its `develop` branch. Installing uses your existing git or `gh` login.
+Until the skills are merged into `paperplanehq/paperplane-engineering`, install them from this repo,
+`Jacob-Valor/paperplane-engineering-workflow-skills`. It is private: ask Jacob-Valor for read access.
+Installing uses your existing git or `gh` login.
 
 ```bash
 # all skills, globally, for every agent on this machine
-pnpm dlx skills add paperplanehq/paperplane-engineering -g --skill '*'
+pnpm dlx skills add Jacob-Valor/paperplane-engineering-workflow-skills -g --skill '*'
 
 # update later
 pnpm dlx skills update -g
 
 # list what's available without installing
-pnpm dlx skills add paperplanehq/paperplane-engineering --list
+pnpm dlx skills add Jacob-Valor/paperplane-engineering-workflow-skills --list
 ```
+
+Once they are merged into `paperplanehq/paperplane-engineering` (`develop`), use that repo name in
+the commands above instead.
 
 From a local checkout of this folder:
 
