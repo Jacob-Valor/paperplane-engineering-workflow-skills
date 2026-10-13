@@ -1,5 +1,8 @@
 # Paper Plane engineering workflow skills
 
+[![validate](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml/badge.svg)](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml)
+Version **v2026.10.13**, matching the guide of 2026-10-13 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
+
 Agent skills that encode the [Paper Plane engineering guide](https://github.com/paperplanehq/paperplane-engineering)
 for every repository in the `paperplanehq` GitHub org. They follow the
 [Agent Skills specification](https://agentskills.io/specification) and install with the
@@ -20,6 +23,19 @@ use pnpm only, keep secrets out of git, and leave merging, releasing and deployi
 
 Agents load a skill automatically when the request matches its description. You can also ask for
 one by name: "use paperplane-shipping-changes".
+
+## Repository layout
+
+```
+skills/<name>/SKILL.md          the skill (frontmatter + instructions)
+skills/<name>/scripts/*.sh      checks the skill runs with `bash` (shipping-changes only)
+tests/scenarios/                agent pressure scenarios S1–S8
+tests/triggering.md             do the descriptions pick the right skill?
+tests/README.md                 how to run them and the pass criteria
+tests/RESULTS.md                before/after scores for every change
+tests/scripts/run.sh            behaviour tests for the scripts (CI)
+.github/workflows/validate.yml  spec validation, shellcheck, script tests
+```
 
 ## Engineering workflow
 
@@ -105,8 +121,8 @@ Agents follow the same rules as developers (§7), with less authority:
 | Agents do | A person does instead |
 |---|---|
 | Work on a feature branch; commit as `type(scope): summary`; stage files by name | — |
-| Scan the new commits with `gitleaks`, then push their branch the same day and open a **draft** PR into `develop` marked `AI-assisted: yes` | — |
-| Show the person running them the full diff; mark the PR ready only after their go-ahead | That person reviews every line before Ready |
+| Run `scripts/pre-push.sh` (branch, lockfiles, `.env`, build output, `gitleaks`) before every push; push the branch the same day and open a **draft** PR into `develop` marked `AI-assisted: yes` | — |
+| Show the person running them the full diff; check the body with `scripts/check-pr-body.sh`; mark the PR ready only after their go-ahead | That person reviews every line before Ready |
 | — | The author turns on auto-merge; a code owner approves; the PR squash-merges |
 | Merge `develop` into a stacked branch after the PR below merges | A person rebases and force-pushes, if they prefer |
 | Prepare release PRs, compute the `prod-*` tag, write out the commands | The CTO merges to `uat`/`main`, tags and deploys |
@@ -149,26 +165,36 @@ pnpm dlx skills add . -g --skill '*'
 Skills are tested like code: write a pressure scenario, watch an agent without the skill fail it,
 change the skill, and confirm agents with the skill pass it.
 
-1. Write a scenario that tempts the violation with 3 or more pressures (deadline, someone senior
-   asking, admin access, "I take responsibility"). Ask for exact commands, messages, and a one-line
-   reason for each choice. Give only facts the agent would see (repo files, `gh` output); never state
-   the rule being tested, or the baseline passes for the wrong reason.
+1. Write a scenario in `tests/scenarios/` that tempts the violation with 3 or more pressures
+   (deadline, someone senior asking, admin access, "I take responsibility"). Ask for exact commands,
+   messages, and a one-line reason for each choice. Give only facts the agent would see (repo files,
+   `gh` output); never state the rule being tested, or the baseline passes for the wrong reason. Add
+   its pass criteria to `tests/README.md`.
 2. Run it on fresh agents, at least 3 with the skill and 2 without. If agents without the skill
    already behave correctly, there is nothing to fix.
 3. Edit the `SKILL.md`. Put the excuses agents gave, word for word, in its **Rationalizations** table.
-4. Re-run until every run with the skill passes.
-5. Validate and open a PR into `develop` (see `paperplane-shipping-changes`):
+4. Re-run until every run with the skill passes. Record the before/after scores in
+   `tests/RESULTS.md` and the change in `CHANGELOG.md`.
+5. Check locally, then open a PR into `main`; CI runs the same checks:
 
 ```bash
-uvx --from "git+https://github.com/agentskills/agentskills#subdirectory=skills-ref" \
-  skills-ref validate skills/<skill-name>
+for s in skills/*/; do
+  uvx --from "git+https://github.com/agentskills/agentskills#subdirectory=skills-ref" skills-ref validate "$s"
+done
+shellcheck -S warning skills/*/scripts/*.sh tests/scripts/*.sh
+bash tests/scripts/run.sh
 pnpm dlx skills add . --list    # every skill still discovered
 ```
 
 Rules for `SKILL.md`:
 
 - `name` is lowercase with hyphens and matches the folder name.
-- `description` starts with "Use when…" and lists triggers only, not the workflow. Agents that read
-  a workflow summary in the description follow it and skip the body.
+- `description` is one short sentence on what the skill covers, then "Use when…" with the triggers.
+  Never list workflow steps there: agents that read a step list in the description follow it and
+  skip the body. Run `tests/triggering.md` after changing a description.
+- Frontmatter also carries `license: Proprietary`, `metadata.author` and `metadata.guide-version`
+  (the guide date the skill matches); `compatibility` only when the skill needs tools.
+- Anything a regex or exit code can check goes in a script under `scripts/`, called with `bash`,
+  with a test in `tests/scripts/run.sh`.
 - Keep the body under 500 lines. Quote the guide; don't invent policy. If the guide changes,
-  update the skill in the same PR or the next one.
+  update the skill and `guide-version` in the same PR or the next one.

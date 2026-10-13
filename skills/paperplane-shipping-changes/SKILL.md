@@ -1,6 +1,11 @@
 ---
 name: paperplane-shipping-changes
-description: Use when making any code, config, or dependency change in a paperplanehq repository — creating a branch, committing, adding or updating packages, pushing, opening, stacking, or marking a pull request ready — and especially when asked to push straight to develop/uat/main, "just commit everything", turn on auto-merge, bundle unrelated changes, or skip the PR because of a deadline.
+description: Paper Plane's rules for getting a change into develop through a branch and a draft PR. Use when making any code, config, or dependency change in a paperplanehq repository — creating a branch, committing, adding or updating packages, pushing, opening, stacking, or marking a pull request ready — and especially when asked to push straight to develop/uat/main, "just commit everything", turn on auto-merge, bundle unrelated changes, or skip the PR because of a deadline.
+license: Proprietary
+compatibility: Requires git, gh and pnpm; gitleaks recommended. Written for the paperplanehq GitHub org.
+metadata:
+  author: paperplanehq
+  guide-version: "2026-10-13"
 ---
 
 # Shipping changes at Paper Plane
@@ -35,27 +40,26 @@ Deadlines and explicit requests don't change these. Only the CTO (Pay) can grant
 2. **Branch** from fresh `develop`: `git switch develop && git pull && git switch -c <feature|fix|chore>/<topic>`. Uncommitted work on `develop`: `git switch -c fix/<topic>` carries it. Hotfix → **paperplane-releasing**.
 3. **Verify** with the scripts in AGENTS.md. App repos (TripBuddy, Sanaam, Studio): iOS **and** Android, devices named. Report real results.
 4. **Commit** one logical change as `type(scope): summary`: type `feat|fix|chore|docs|refactor|perf|test|build|ci|revert`, lowercase scope, under 72 characters, no full stop. "Fixed OTP" becomes `fix(auth): otp resend waits for the cooldown`.
-5. **Draft PR the same day**. A pushed secret is leaked, and nobody has read the diff yet, so scan first:
+5. **Draft PR the same day**. A pushed secret is leaked, and nobody has read the diff yet, so check **before every push** (this one and every later one). `<skill>` is the folder this SKILL.md is in; run from the repo root:
    ```bash
-   git fetch origin
-   gitleaks git --no-banner --redact --log-opts="origin/develop..HEAD"   # exit 1: don't push → paperplane-secret-incidents
+   bash <skill>/scripts/pre-push.sh   # branch, identity, lockfiles, .env, build output, gitleaks
    git push -u origin <branch>
    gh pr create --draft --base develop --title "<type(scope): summary>" --body-file pr-body.md
    ```
-   No `gitleaks` installed: read the full `git diff origin/develop...HEAD` for keys before pushing. Body = the repo's `.github/pull_request_template.md`, every heading kept, `- Commands:`/`- iOS:`/`- Android:` lines kept (CI reads them).
+   Exit 1: don't push; a secret → **paperplane-secret-incidents**. Exit 3 (no `gitleaks`): read the full `git diff origin/develop...HEAD` for keys, then push. Body = the repo's `.github/pull_request_template.md`, every heading kept, `- Commands:`/`- iOS:`/`- Android:` lines kept (CI reads them).
 6. **Hand over**: show the full diff (`git diff origin/develop...HEAD`) and the PR URL. End your turn.
 7. **Ready**: only after the human says they reviewed the diff, and only when the body is complete:
    - How I verified it: commands and real results; iOS and Android devices, or `not a mobile change`. An untested platform keeps it draft.
    - Risk: what could break **and what is not done**. Over ~400 changed lines (lockfiles excluded): `Size: <reason>`, or split.
    - `AI-assisted: yes (<tool>) — <what you ran>`. The `yes / no` placeholder fails CI.
 
-   Then `gh pr ready <N>`, report the URL, stop. The reviewer is never the person who prompted you.
+   Check it with `bash <skill>/scripts/check-pr-body.sh pr-body.md` (same rules as CI; app repos detected from `standard.yml`), then `gh pr ready <N>`, report the URL, stop. The reviewer is never the person who prompted you.
 
 ## Scope and stacks
 
 - One concern per PR, under ~400 changed lines. **Native change** (config plugin, `app.json`, `patches/`, `ios/`, `android/`, permissions) alone, with the dev-client or EAS build named. **Tooling bump** (test library major, package manager, CI) alone.
 - Stack at most **two**; the bottom PR is ready. The upper PR's base is the bottom branch; its Risk says "stacked on #N, merge #N first".
-- After the bottom PR merges: `git fetch origin && git merge origin/develop`, verify, `git push`, then `gh pr edit <N> --base develop` if GitHub didn't retarget.
+- After the bottom PR merges: `git fetch origin && git merge origin/develop`, verify, `bash <skill>/scripts/pre-push.sh`, `git push`, then `gh pr edit <N> --base develop` if GitHub didn't retarget.
 
 ## Dependencies
 

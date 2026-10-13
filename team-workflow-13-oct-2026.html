@@ -244,6 +244,7 @@
 <ul>
 <li>Agents work on your branch only. They never merge, promote, deploy, force-push, approve or turn on auto-merge.</li>
 <li>An agent may push and open the <strong>draft</strong>. It marks the PR ready only after you have reviewed the full diff and told it to.</li>
+<li>Before every push, the agent checks the new commits for secrets (<code>gitleaks</code>), extra lockfiles, <code>.env</code> files and build output. Nobody has read the diff yet, and a pushed secret is a leaked secret; the CI secret scan only runs after the push.</li>
 <li>Mark the PR <code>AI-assisted: yes (tool)</code> and list what the agent verified by running it.</li>
 <li>Review every line before "Ready" as if you wrote it. The reviewer is never the person who prompted the agent.</li>
 <li>No dead code "for later", no leftover TODOs or debug logs; the reviewer sends it back.</li>

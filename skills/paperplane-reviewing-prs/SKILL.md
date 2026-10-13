@@ -1,6 +1,11 @@
 ---
 name: paperplane-reviewing-prs
-description: Use when reviewing, assessing, approving, or merging a pull request in a paperplanehq repository, including PRs written with an AI agent, stacked PRs, drafts, and requests to "approve it so it can merge today" or turn on auto-merge.
+description: Paper Plane's PR review checklist and report format; a human approves. Use when reviewing, assessing, approving, or merging a pull request in a paperplanehq repository, including PRs written with an AI agent, stacked PRs, drafts, and requests to "approve it so it can merge today" or turn on auto-merge.
+license: Proprietary
+compatibility: Requires gh authenticated to the paperplanehq GitHub org.
+metadata:
+  author: paperplanehq
+  guide-version: "2026-10-13"
 ---
 
 # Reviewing PRs at Paper Plane

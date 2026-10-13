@@ -1,6 +1,11 @@
 ---
 name: paperplane-releasing
-description: Use when asked to release, ship, or promote a paperplanehq repository to UAT or production, merge develop into uat or uat into main, tag a prod release, roll back, make a hotfix, or tag a mobile store build.
+description: Paper Plane's release, hotfix, rollback and store-tag rules; the CTO runs releases. Use when asked to release, ship, or promote a paperplanehq repository to UAT or production, merge develop into uat or uat into main, tag a prod release, roll back, make a hotfix, or tag a mobile store build.
+license: Proprietary
+compatibility: Requires git and gh authenticated to the paperplanehq GitHub org.
+metadata:
+  author: paperplanehq
+  guide-version: "2026-10-13"
 ---
 
 # Releasing at Paper Plane

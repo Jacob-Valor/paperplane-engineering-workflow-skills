@@ -1,6 +1,11 @@
 ---
 name: paperplane-repo-setup
-description: Use when creating or onboarding a repository in the paperplanehq GitHub org, or when a paperplanehq repo lacks the standard CI workflow, PR template, CODEOWNERS, AGENTS.md/CLAUDE.md, .env.example, pnpm, auto-merge, or the develop/uat/main branches — "set it up to our engineering standard", "migrate to pnpm".
+description: Paper Plane's standard files, CI and repo settings, applied by copying the engineering templates. Use when creating or onboarding a repository in the paperplanehq GitHub org, or when a paperplanehq repo lacks the standard CI workflow, PR template, CODEOWNERS, AGENTS.md/CLAUDE.md, .env.example, pnpm, auto-merge, or the develop/uat/main branches — "set it up to our engineering standard", "migrate to pnpm".
+license: Proprietary
+compatibility: Requires gh authenticated to the paperplanehq GitHub org; pnpm for migrations.
+metadata:
+  author: paperplanehq
+  guide-version: "2026-10-13"
 ---
 
 # Bringing a repo up to the Paper Plane standard
