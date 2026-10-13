@@ -51,13 +51,17 @@ Deadlines and explicit requests don't change these. Only the CTO (Pay) can grant
 7. **Ready**: only after the human says they reviewed the diff, and only when the body is complete:
    - How I verified it: commands and real results; iOS and Android devices, or `not a mobile change`. An untested platform keeps it draft.
    - Risk: what could break **and what is not done**. Over ~400 changed lines (lockfiles excluded): `Size: <reason>`, or split.
+   - Checklist: all 7 boxes, ticked only where true.
    - `AI-assisted: yes (<tool>) — <what you ran>`. The `yes / no` placeholder fails CI.
+   - The diff has no dead or commented-out code, "for later" helpers, leftover TODOs or debug logs. Remove them first; the reviewer sends them back.
 
    Check it with `bash <skill>/scripts/check-pr-body.sh pr-body.md` (same rules as CI; app repos detected from `standard.yml`), then `gh pr ready <N>`, report the URL, stop. The reviewer is never the person who prompted you.
+8. **Review comments**: every comment gets an answer **the same day**: a fix, or a reply in the thread saying why not. If the user defers a comment, draft that reply for them to post today ("Not in this PR: <reason>; follow-up: <link or plan>"). No comment stays silent. Resolving threads is for the author and reviewer.
+9. **Old drafts**: a draft open more than three working days gets split, or the user asks for help. Tell them; don't keep adding to it.
 
 ## Scope and stacks
 
-- One concern per PR, under ~400 changed lines. **Native change** (config plugin, `app.json`, `patches/`, `ios/`, `android/`, permissions) alone, with the dev-client or EAS build named. **Tooling bump** (test library major, package manager, CI) alone.
+- One concern per PR, under ~400 changed lines. Bigger work: several PRs that each leave the app working. **Native change** (config plugin, `app.json`, `patches/`, `ios/`, `android/`, permissions) alone, with the dev-client or EAS build named. **Tooling bump** (test library major, package manager, CI) alone.
 - Stack at most **two**; the bottom PR is ready. The upper PR's base is the bottom branch; its Risk says "stacked on #N, merge #N first".
 - After the bottom PR merges: `git fetch origin && git merge origin/develop`, verify, `bash <skill>/scripts/pre-push.sh`, `git push`, then `gh pr edit <N> --base develop` if GitHub didn't retarget.
 
@@ -81,3 +85,5 @@ Deadlines and explicit requests don't change these. Only the CTO (Pay) can grant
 | "A PR into a feature branch has no review gate, so no stacking" | Two-deep stacks are allowed; the upper PR is reviewed and merges after the one below. |
 | "`git diff --stat` shows no `.env` or key files" | A key inside a source file never shows in `--stat`. Scan the content before the push. |
 | "The reviewer prefers one big PR" | Native changes and tooling bumps go alone. |
+| "I left Sok's other two comments alone, as you asked" | Deferring is fine; silence isn't. Draft the "why not" reply for the user to post today. |
+| "The cleanup only removed lines she already read" | Any new commit after their review needs their go-ahead again before Ready. |

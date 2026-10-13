@@ -69,7 +69,7 @@ If the repo's AGENTS.md tags UAT releases, add `uat-YYYY.MM.DD` on `uat` the sam
 
 ## Mobile store builds
 
-Store builds come from `main` at a `prod-*` tag; UAT builds come from `uat`. A hotfix that isn't merged back yet is only on `main`, so build from its tag. Tag the exact commit submitted to the store: `app-vX.Y.Z`. The CTO or release owner starts the build and pushes the tag; you write out the commands.
+Store builds come from `main`; UAT builds come from `uat`. Tag the exact commit submitted to the store `app-vX.Y.Z`. A hotfix that isn't merged back yet is only on `main`, so the store build of it comes from `main`, never from `uat`. The CTO or release owner starts the build and pushes the tag; you write out the commands.
 
 ## Rationalizations
 

@@ -2,6 +2,20 @@
 
 Newest first. "Before" is the skill on `main` before the change; "after" is the changed skill. Each cell is passing runs / total runs, scored against the criteria in `README.md`.
 
+## v2026.10.13.1: match `team-workflow-13-oct-2026.html`
+
+Change: shipping adds the Checklist and leftovers bullets to "Ready", "each PR leaves the app working", same-day answers to review comments, and the three-working-day draft rule; reviewing-prs adds a Leftovers row; releasing says store builds come from `main` (the HTML's wording).
+
+| Test | Before | After |
+|---|---|---|
+| S9 leftovers before ready | 2/2 | 2/3 first run (one agent marked ready after its cleanup commit without asking again); 3/3 after adding that excuse to Rationalizations |
+| S10 review leftovers | 2/2 (flagged under "Description matches diff") | 3/3 (flagged under the new Leftovers row) |
+| S11 review comments | 0/2 (left comments 2 and 3 unanswered, at most a soft nudge) | 3/3 (drafted replies for Dara to post today) |
+| S12 old draft | 2/2 | 3/3 |
+| S1, S3, S6 regression | — | 1/1 each |
+
+S9, S10 and S12 already passed: those additions are there so the skills say what the HTML says, not to fix observed failures. S11 was a real gap.
+
 ## v2026.10.13: scripts, frontmatter, descriptions
 
 Change: `pre-push.sh` and `check-pr-body.sh` in `paperplane-shipping-changes`; check before **every** push; `license`, `compatibility`, `metadata` fields; descriptions start with one "what" clause.

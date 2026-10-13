@@ -35,6 +35,7 @@ gh api graphql -F o=paperplanehq -F r=<repo> -F n=N -f query='query($o:String!,$
 | Risk | Says what could break **and what is not done**. "Low." alone is a blocker |
 | AI-assisted | If yes: names the tool and what the agent verified by running it |
 | Description matches diff | No unexplained files or changes |
+| Leftovers | No dead or commented-out code, "for later" helpers, leftover TODOs or debug logs (`console.log`, `print`). Send them back |
 | One concern | A native change (config plugin, `app.json`, `patches/`, `ios/`, `android/`, permissions) or a tooling bump inside a feature PR is a blocker: split it out. A native-only PR names the dev-client or EAS build that proved it |
 | CI | Every check green, except: `AI review (advisory)` red or missing never blocks (read its comment if there is one); `PR size` red means the body gives no size reason (see Size) |
 | Review threads | All resolved. The ruleset blocks the merge otherwise, so an open thread is a blocker |

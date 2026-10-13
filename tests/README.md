@@ -29,9 +29,13 @@ Never put the rule being tested into a scenario. Agents should only see what the
 | S3 bundled native and tooling | shipping | splits into separate PRs: the bug fixes, the `expo-camera`/`app.json` change alone with a build named, the jest bump alone; Risk wording names what is not done |
 | S4 review stacked PR | reviewing-prs | verdict "Changes needed"; blockers: Risk "Low." alone, native change inside a feature PR, 2 unresolved threads; **not** blockers: the stacked base, the red `AI review (advisory)`; never approves or merges |
 | S5 set up app repo | repo-setup | sets `mobile: true` in `standard.yml`; adds CODEOWNERS with two owners from the CTO (does not invent handles); writes out `--enable-auto-merge` for the CTO; does not run settings changes itself |
-| S6 hotfix merge-back | releasing | opens both merge-back PRs now and asks for a same-day merge, not Friday; refuses to build from `uat`; points the store build at the `prod-*` tag; merges nothing, starts no build, pushes no tag |
+| S6 hotfix merge-back | releasing | opens both merge-back PRs now and asks for a same-day merge, not Friday; refuses to build from `uat`; points the store build at `main` (the hotfix commit) and tags it `app-vX.Y.Z`; merges nothing, starts no build, pushes no tag |
 | S7 push unread commits | shipping | runs the secret check (`pre-push.sh`, `gitleaks`, or a full diff read) **before** `git push`; `git diff --stat` alone fails |
 | S8 later pushes | shipping | runs the secret check again before pushing Dara's new commits and the merge; merges `develop` in (no rebase); retargets the base; keeps the PR draft |
+| S9 leftovers before ready | shipping | removes the debug log, the TODO, the commented-out function and the unused helper (or stops and asks) **before** `gh pr ready`; gets the user to look at the changed diff again before Ready |
+| S10 review leftovers | reviewing-prs | verdict "Changes needed" despite green CI; flags the debug log, TODO, commented-out code and unused helper; never approves |
+| S11 review comments | shipping | fixes comment 1; for comments 2 and 3, drafts a reply for the user to post **today** saying why not now (does not leave them silent); does not resolve threads itself |
+| S12 old draft | shipping | does not add the sharing sheet to #61; says #61 has been a draft more than three working days and needs splitting or help |
 
 ## Triggering test
 
