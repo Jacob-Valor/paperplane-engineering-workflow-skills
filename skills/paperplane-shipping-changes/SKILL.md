@@ -37,7 +37,7 @@ Deadlines and explicit requests don't change these. Only the CTO (Pay) can grant
 
 ## Workflow
 
-1. **Identity**: `git config --show-origin --get user.email` is the human's own. Someone else's in `.git/config`: stop and tell the user. Once per clone, install the pre-push hook: `bash <skill>/hooks/install-git-hook.sh` (local to `.git/hooks`; an existing hook keeps running). It runs the same checks as step 5 on every push and blocks pushes to `develop`/`uat`/`main`. It doesn't block force-pushes, because people may rebase their own branches; you never force-push anyway.
+1. **Identity**: `git config --show-origin --get user.email` is the human's own. Someone else's in `.git/config`: stop and tell the user. Once per clone, install the pre-push hook: `bash <skill>/hooks/install-git-hook.sh`. It repeats step 5's checks on every push and blocks pushes to `develop`/`uat`/`main`.
 2. **Branch** from fresh `develop`: `git switch develop && git pull && git switch -c <feature|fix|chore>/<topic>`. Uncommitted work on `develop`: `git switch -c fix/<topic>` carries it. Hotfix → **paperplane-releasing**.
 3. **Verify** with the scripts in AGENTS.md. App repos (TripBuddy, Sanaam, Studio): iOS **and** Android, devices named. Report real results.
 4. **Commit** one logical change as `type(scope): summary`: type `feat|fix|chore|docs|refactor|perf|test|build|ci|revert`, lowercase scope, under 72 characters, no full stop. "Fixed OTP" becomes `fix(auth): otp resend waits for the cooldown`.
@@ -47,15 +47,14 @@ Deadlines and explicit requests don't change these. Only the CTO (Pay) can grant
    git push -u origin <branch>
    gh pr create --draft --base develop --title "<type(scope): summary>" --body-file pr-body.md
    ```
-   Exit 1: don't push; a secret → **paperplane-secret-incidents**. Exit 3 (no `gitleaks`): read the full `git diff origin/develop...HEAD` for keys, then push. Body = the repo's `.github/pull_request_template.md`, every heading kept, `- Commands:`/`- iOS:`/`- Android:` lines kept (CI reads them). Fill these two lines in the first draft:
-   - `AI-assisted: yes (<tool>) — <what you ran>`. You are the AI, so it is never `no`.
-   - `Risk: <what could break>. Not done: <what isn't done or verified yet>`. Name builds and devices you actually used; never a placeholder.
+   Exit 1: don't push; a secret → **paperplane-secret-incidents**. Exit 3 (no `gitleaks`): read the full `git diff origin/develop...HEAD` for keys, then push. Body = the repo's `.github/pull_request_template.md`, every heading kept, `- Commands:`/`- iOS:`/`- Android:` lines kept (CI reads them). The first draft already has:
+   - `AI-assisted: yes (<tool>) — <what you ran>`. You are the AI, so it is never `no`; the `yes / no` placeholder fails CI.
+   - A Risk that says what could break and what is not done, in real words, e.g. `Risk: the camera permission prompt could fail on Android 14. Not done: dev-client build, Android device test.` If nothing is built yet (often for a native change), "Not done" names that build and the PR stays draft. Never `Not done: none`, never a bracketed placeholder.
 6. **Hand over**: show the full diff (`git diff origin/develop...HEAD`) and the PR URL. End your turn.
-7. **Ready**: only after the human says they reviewed the diff. Any commit after their review, cleanup included, needs a new go-ahead: show `git diff` of the new commits and wait. The body must be complete:
+7. **Ready**: only after the human says they reviewed the diff. Any commit after their review, cleanup included, needs a new go-ahead: push it (step 5 check first), show `git diff` of the new commits, and **stop until they say go**. The body must be complete:
    - How I verified it: commands and real results; iOS and Android devices, or `not a mobile change`. An untested platform keeps it draft.
-   - Risk: what could break **and what is not done**. Over ~400 changed lines (lockfiles excluded): `Size: <reason>`, or split.
+   - Risk from step 5, up to date. Over ~400 changed lines (lockfiles excluded): `Size: <reason>`, or split.
    - Checklist: all 7 boxes, ticked only where true.
-   - `AI-assisted: yes (<tool>) — <what you ran>`. The `yes / no` placeholder fails CI.
    - The diff has no dead or commented-out code, "for later" helpers, leftover TODOs or debug logs. Remove them first; the reviewer sends them back.
 
    Check it with `bash <skill>/scripts/check-pr-body.sh pr-body.md` (same rules as CI, which skips the body check while the PR is a draft; app repos detected from `standard.yml`), then `gh pr ready <N>`, report the URL, stop. The reviewer is never the person who prompted you.
@@ -83,11 +82,9 @@ Deadlines and explicit requests don't change these. Only the CTO (Pay) can grant
 | "Just this once, `npm i` is faster" | It creates a second lockfile and CI rejects it. |
 | "The author asked me to turn on auto-merge" | Auto-merge is a merge decided in advance. The author clicks it. |
 | "The guide says rebase after each merge" | That's for humans. You merge `develop` in. |
-| "Pushing before the review skips the required human review" | The review gate is Ready, not the push. Push and open the draft the same day. |
-| "The PR opens ready for review, which matches 'mark it ready'" | Always draft first. Ready only after their go-ahead on the diff. |
+| "Pushing before the review skips the required human review" / "The PR opens ready, which matches 'mark it ready'" | The review gate is Ready, not the push. Push and open a **draft** the same day; Ready only after their go-ahead on the diff. |
 | "A PR into a feature branch has no review gate, so no stacking" | Two-deep stacks are allowed; the upper PR is reviewed and merges after the one below. |
 | "`git diff --stat` shows no `.env` or key files" | A key inside a source file never shows in `--stat`. Scan the content before the push. |
 | "The reviewer prefers one big PR" | Native changes and tooling bumps go alone. |
 | "I left Sok's other two comments alone, as you asked" | Deferring is fine; silence isn't. Draft the "why not" reply for the user to post today. |
-| "The cleanup only removed lines she already read" | Any new commit after their review needs their go-ahead again before Ready. |
 | "Stack sms on #42 now; #42 goes ready after review" | A draft bottom PR means no upper PR yet. Check `isDraft`; branch from `develop` or wait. |

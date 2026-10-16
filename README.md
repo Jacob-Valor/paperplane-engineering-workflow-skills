@@ -1,7 +1,7 @@
 # Paper Plane engineering workflow skills
 
 [![validate](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml/badge.svg)](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml)
-Version **v2026.10.15.1**, matching the guide of 2026-10-15 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
+Version **v2026.10.15.2**, matching the guide of 2026-10-15 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
 
 Agent skills that encode the [Paper Plane engineering guide](https://github.com/paperplanehq/paperplane-engineering)
 for every repository in the `paperplanehq` GitHub org. They follow the
@@ -35,20 +35,25 @@ skills/<name>/scripts/*.sh                checks the skill runs with `bash`
   releasing/scripts/next-tag.sh           next prod-/uat- tag name, or the rollback tag
   repo-setup/scripts/audit.sh             PASS/FAIL audit of one repo against the standard
 skills/paperplane-shipping-changes/hooks/ git pre-push hook and Claude Code guard, with installers
-tests/scenarios/                          agent pressure scenarios S1–S14
+tests/scenarios/                          agent pressure scenarios S1–S19
 tests/triggering.md                       do the descriptions pick the right skill?
 tests/README.md                           how to run them and the pass criteria
 tests/RESULTS.md                          before/after scores for every change
 tests/eval/run.py                         runs the scenarios through `claude -p` and grades them
+tests/eval/checks.py                      mechanical checks on top of the model grader
+tests/eval/sandbox/run.py                 tool-using eval in a throwaway repo, graded by end state
 tests/scripts/                            behaviour tests for every script and hook (CI)
 tests/drift/check.sh                      do the skills still match the live guide?
-.github/workflows/validate.yml            spec validation, shellcheck, script tests
+.github/workflows/validate.yml            spec validation, shellcheck, script tests, eval self-tests
 .github/workflows/drift.yml               weekly drift check (needs the ORG_READ_TOKEN secret)
+.github/workflows/eval.yml                agent evals: triggering on PRs, all scenarios weekly (needs ANTHROPIC_API_KEY)
 ```
 
 ## Hooks (recommended for everyone)
 
-Skills tell an agent the rules; hooks enforce them. Install both once per machine or clone.
+Skills tell an agent the rules; hooks enforce them. Install both once per machine or clone. In the
+sandbox eval, small models often never opened a skill and then pushed to `develop` or merged; with
+the hooks installed, nothing reached the remote (`tests/RESULTS.md`).
 `<skills>` is where the skills are installed, e.g. `~/.agents/skills`.
 
 ```bash
