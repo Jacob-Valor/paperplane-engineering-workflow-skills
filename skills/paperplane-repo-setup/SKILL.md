@@ -34,7 +34,7 @@ One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; 
 |---|---|
 | `.github/workflows/standard.yml` | Exact copy of `templates/standard.yml`. It calls the reusable `standard-checks.yml@develop`: one `standard / checks` job (pnpm only, PR title, PR body, PR size, secret scan) and `standard / AI review (advisory)`. **App repo** (TripBuddy app, Sanaam app, Studio app): uncomment `with: mobile: true`, or the iOS/Android lines are never checked. An existing file that differs from the template (missing `ready_for_review`, `concurrency` or `mobile: true`) gets replaced. Never write your own copies of these checks. Repo build/test CI goes in a separate `ci.yml`. |
 | `.github/pull_request_template.md` | Exact copy of `templates/pull_request_template.md` |
-| `.github/CODEOWNERS` | Copy of `templates/CODEOWNERS` with **two** owners on every line. Ask the CTO for the GitHub handles first and write the file with them; never invent handles or commit placeholders. Until the CTO answers, leave CODEOWNERS out of the commit and say so in the PR, which stays draft |
+| `.github/CODEOWNERS` | Copy of `templates/CODEOWNERS` with **two** owners on every line. Ask the CTO for the GitHub handles; never invent them. The PR stays draft until they are filled in |
 | `AGENTS.md` | Copy the sections "How we work as a team", "Rules for AI coding agents" and "Rules for everyone" from a migrated sibling (e.g. `tripbuddy-backend`). Adjust the product intro line. Then write "## This repo": stack, layers, and the exact commands under **Verify before opening a PR**. |
 | `CLAUDE.md` | `# CLAUDE.md`, a line saying to read and follow AGENTS.md, then a line with `@AGENTS.md` |
 | `.env.example` | Every variable **name** with a placeholder value. No real values. |
@@ -53,9 +53,9 @@ raw tripbuddy-backend AGENTS.md > AGENTS.md   # then edit as above
 
 ```bash
 corepack enable && corepack use pnpm@latest    # writes "packageManager" to package.json
-pnpm import                                    # FIRST, while yarn.lock/package-lock.json still exist: keeps the resolved versions
-git rm --ignore-unmatch package-lock.json yarn.lock bun.lock bun.lockb   # only after pnpm import
-pnpm install && pnpm approve-builds <pkg> …    # dependencies pnpm lists with an ignored install script; never the root postinstall (patch-package)
+pnpm import                                    # converts package-lock/yarn.lock, keeping resolved versions
+git rm --ignore-unmatch package-lock.json yarn.lock bun.lock bun.lockb
+pnpm install && pnpm approve-builds <pkg> …    # name each dependency pnpm lists as having an ignored install script (no args = interactive prompt)
 # switch every npm/yarn/npx use in scripts, CI, Dockerfiles, EAS config and AGENTS.md to pnpm, then:
 pnpm test                                      # and the repo's build
 pnpm exec expo run:ios && pnpm exec expo run:android   # React Native/Expo: before Ready, even when asked to skip
