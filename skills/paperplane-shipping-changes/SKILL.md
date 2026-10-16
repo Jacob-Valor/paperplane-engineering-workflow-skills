@@ -1,6 +1,6 @@
 ---
 name: paperplane-shipping-changes
-description: Paper Plane's rules for getting a change into develop through a branch and a draft PR. Use when making any code, config, or dependency change in a paperplanehq repository — creating a branch, committing, adding or updating packages, pushing, opening, stacking, or marking a pull request ready — and especially when asked to push straight to develop/uat/main, "just commit everything", turn on auto-merge for a PR, bundle unrelated changes, or skip the PR because of a deadline.
+description: Paper Plane's rules for getting a change into develop through a branch and a draft PR. Use when making any code, config, or dependency change in a paperplanehq repository — creating a branch, committing, adding or updating packages, pushing, rebasing or force-pushing a branch, opening, stacking, or marking a pull request ready — and especially when asked to push straight to develop/uat/main, "just commit everything", turn on auto-merge for a PR, bundle unrelated changes, or skip the PR because of a deadline.
 license: Proprietary
 compatibility: Requires git, gh and pnpm; gitleaks recommended. Written for the paperplanehq GitHub org.
 metadata:

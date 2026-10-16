@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
 # Adds (or removes) the paperplane guard as a Claude Code PreToolUse hook on Bash.
-# Usage: bash hooks/install-claude-hook.sh [--project|--user] [--uninstall]
-#   --project (default) <repo root>/.claude/settings.local.json
-#   --user              $HOME/.claude/settings.json
+# Usage: bash hooks/install-claude-hook.sh [--project|--user|--commit] [--uninstall]
+#   --project (default) <repo root>/.claude/settings.local.json, this clone only
+#   --user              $HOME/.claude/settings.json, every repo on this machine
+#   --commit            team repo: copies the guard to <repo root>/.claude/hooks/
+#                       paperplane-guard.sh and adds it to <repo root>/.claude/settings.json;
+#                       commit both files. Run it again to refresh the copy.
 # Keeps every other setting. Running it again does not add a second entry.
-# --uninstall removes only the paperplane guard entry.
+# --uninstall removes only the paperplane guard entry (and the --commit copy).
 # Exit codes: 0 done · 1 settings file unreadable or not writable ·
 #             2 usage error, not in a git repo, or neither jq nor python3
 set -uo pipefail
 
-usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; }
 scope=project
 uninstall=0
 for arg in "$@"; do
   case "$arg" in
     --project) scope=project ;;
     --user) scope=user ;;
+    --commit) scope=commit ;;
     --uninstall) uninstall=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $arg"; usage; exit 2 ;;
@@ -32,6 +36,12 @@ else
   root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "not inside a git repo; cd into the repo or use --user"; exit 2; }
   file="$root/.claude/settings.local.json"
 fi
+if [ "$scope" = commit ]; then
+  file="$root/.claude/settings.json"
+  vendored="$root/.claude/hooks/paperplane-guard.sh"
+  # shellcheck disable=SC2016  # Claude Code expands $CLAUDE_PROJECT_DIR when it runs the hook
+  command='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/paperplane-guard.sh"'
+fi
 
 if [ -s "$file" ]; then
   current=$(cat "$file") || { echo "cannot read $file"; exit 1; }
@@ -40,9 +50,10 @@ else
   current='{}'
 fi
 
-# An entry is ours when its command runs paperplane-shipping-changes/hooks/claude-guard.sh.
+# An entry is ours when its command runs paperplane-shipping-changes/hooks/claude-guard.sh
+# or the --commit copy .claude/hooks/paperplane-guard.sh.
 jq_prog='
-def ours: (.command? // "") | type == "string" and test("paperplane-shipping-changes/hooks/claude-guard\\.sh");
+def ours: (.command? // "") | type == "string" and test("paperplane-shipping-changes/hooks/claude-guard\\.sh|\\.claude/hooks/paperplane-guard\\.sh");
 def strip:
   if (.hooks.PreToolUse | type) == "array" then
     .hooks.PreToolUse |= map(
@@ -64,7 +75,7 @@ if not isinstance(d, dict):
     raise SystemExit("settings file is not a JSON object")
 def ours(h):
     c = h.get("command") if isinstance(h, dict) else None
-    return isinstance(c, str) and re.search(r"paperplane-shipping-changes/hooks/claude-guard\.sh", c) is not None
+    return isinstance(c, str) and re.search(r"paperplane-shipping-changes/hooks/claude-guard\.sh|\.claude/hooks/paperplane-guard\.sh", c) is not None
 hooks = d.get("hooks")
 if isinstance(hooks, dict) and isinstance(hooks.get("PreToolUse"), list):
     kept = []
@@ -100,9 +111,19 @@ else
   tmp="$file.tmp.$$"
   printf '%s\n' "$updated" >"$tmp" && mv "$tmp" "$file" || { rm -f "$tmp"; echo "cannot write $file"; exit 1; }
 fi
+if [ "$scope" = commit ]; then
+  if [ "$uninstall" -eq 1 ]; then
+    rm -f "$vendored" || { echo "cannot remove $vendored"; exit 1; }
+  else
+    mkdir -p "$(dirname "$vendored")" && cat "$guard" >"$vendored" || { echo "cannot write $vendored"; exit 1; }
+  fi
+fi
 if [ "$uninstall" -eq 1 ]; then
   echo "removed the paperplane guard from $file"
 else
   echo "installed the paperplane guard in $file: $command"
   echo "restart Claude Code (or open /hooks) so it loads the hook"
+fi
+if [ "$scope" = commit ]; then
+  echo "commit both files: git add .claude/settings.json .claude/hooks/paperplane-guard.sh"
 fi
