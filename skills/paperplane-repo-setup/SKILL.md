@@ -54,7 +54,7 @@ The `## AI agents` section of `AGENTS.md`:
 ```markdown
 ## AI agents
 - Load the `paperplane-*` skills before any git or gh work (paperplane-shipping-changes to commit, push and open PRs).
-- `.claude/settings.json` runs the committed guard `.claude/hooks/paperplane-guard.sh`. It blocks forbidden commands: merges, approvals, pushes to develop/uat/main, force-pushes, release tags, `--no-verify`. Never remove or bypass it.
+- The committed guard (`.claude/settings.json` + `.claude/hooks/paperplane-guard.sh` for Claude Code, `.omp/hooks/pre/paperplane-guard.ts` for omp) blocks forbidden commands: merges, approvals, pushes to develop/uat/main, force-pushes, release tags, `--no-verify`. Never remove or bypass it.
 - Once per clone, install the git pre-push hook: `bash <skills>/paperplane-shipping-changes/hooks/install-git-hook.sh` (`<skills>`: where the skills are installed, e.g. `~/.agents/skills`).
 ```
 

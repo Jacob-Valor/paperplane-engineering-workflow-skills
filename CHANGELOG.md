@@ -2,6 +2,15 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.6
+
+### Added
+- `repo-setup/scripts/rollout-guard.sh`: commits the guard (Claude Code and omp) and the AGENTS.md "## AI agents" section in any number of repos. Dry run by default; `--apply` pushes `chore/agent-guard` and opens a draft PR into `develop`. Needs write access.
+
+### Changed
+- The AGENTS.md "## AI agents" section names the omp adapter too.
+- This repo's `main` is protected: PR required, review threads resolved, `skills are valid and scripts work` green, no force-push or deletion.
+
 ## v2026.10.15.5
 
 ### Added
