@@ -33,7 +33,7 @@ It prints, in order: the PR (state, draft, base, head, size), the body, `gh pr c
 | Risk | Says what could break **and what is not done**. "Low." alone is a blocker |
 | AI-assisted | If yes: names the tool and what the agent verified by running it |
 | Description matches diff | No unexplained files or changes |
-| Leftovers | No dead or commented-out code, "for later" helpers, leftover TODOs or debug logs (`console.log`, `print`). Send them back |
+| Leftovers | No dead or commented-out code, "for later" helpers (code with no caller, whatever the comment promises), leftover TODOs or debug logs (`console.log`, `print`). Each one is a blocker: send them back |
 | One concern | A native change (config plugin, `app.json`, `patches/`, `ios/`, `android/`, permissions) or a tooling bump inside a feature PR is a blocker: split it out. A native-only PR names the dev-client or EAS build that proved it |
 | CI | `standard / checks` green. It is one job whose steps are pnpm only, PR title, PR body is complete, PR size and secret scan; if it is red, open its log and name the failing step. The PR size step only warns (see Size). `standard / AI review (advisory)` red, missing or skipped (it skips drafts) never blocks; read its comment if there is one. The repo's own checks (e.g. `ci.yml`) must be green too |
 | Review threads | All resolved. The ruleset blocks the merge otherwise, so an open thread is a blocker |
@@ -70,3 +70,4 @@ You may post the report as a comment (`gh pr review N --comment --body-file revi
 | "If the ruleset requires resolved conversations…" | It does. Unresolved threads are a blocker. |
 | "Maybe the repo uses npm" | Org rule: pnpm only. For an unmigrated repo, flag it; don't approve a mixed lockfile. |
 | "It's develop, they can fix it later" | `develop` feeds `uat` and `main`. Review it now. |
+| "define-then-use-next-sprint is acceptable for a helper" | Code with no caller is a leftover. It comes in with the PR that calls it. |
