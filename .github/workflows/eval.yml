@@ -1,0 +1,80 @@
+name: eval
+
+# Agent scenarios and the triggering test through `claude -p` (tests/eval/run.py).
+# Needs the ANTHROPIC_API_KEY secret; without it every job is skipped with a note.
+# Pull requests that touch a SKILL.md run only the triggering test (cheap). The weekly run and
+# manual runs do every scenario on haiku, graded by opus.
+on:
+  pull_request:
+    paths: ["skills/*/SKILL.md"]
+  schedule:
+    - cron: "0 3 * * 1" # Mondays 03:00 UTC, after the drift check
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "answer model (haiku, sonnet, opus)"
+        default: haiku
+      scenarios:
+        description: "comma-separated ids or 'all'"
+        default: all
+      reps:
+        description: "runs per scenario"
+        default: "3"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eval-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    name: skills hold up in agent runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip without the API key
+        id: key
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY is not set, so the eval was skipped. Add it as a repository secret to run it." >> "$GITHUB_STEP_SUMMARY"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install the claude CLI
+        if: steps.key.outputs.skip != '1'
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Triggering test
+        if: steps.key.outputs.skip != '1' && github.event_name == 'pull_request'
+        run: python3 tests/eval/run.py --trigger --reps 3 --model haiku --out eval-out
+
+      - name: Scenarios
+        if: steps.key.outputs.skip != '1' && github.event_name != 'pull_request'
+        env:
+          MODEL: ${{ inputs.model || 'haiku' }}
+          SCENARIOS: ${{ inputs.scenarios || 'all' }}
+          REPS: ${{ inputs.reps || '3' }}
+        run: |
+          python3 tests/eval/run.py --scenarios "$SCENARIOS" --reps "$REPS" --model "$MODEL" \
+            --judge-model opus --jobs 4 --out eval-out || status=$?
+          python3 tests/eval/run.py --trigger --reps 3 --model "$MODEL" --out eval-out || status=$?
+          exit "${status:-0}"
+
+      - name: Summary
+        if: always() && steps.key.outputs.skip != '1'
+        run: cat eval-out/*/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.key.outputs.skip != '1'
+        with:
+          name: eval-out
+          path: eval-out/
+          if-no-files-found: ignore
