@@ -37,8 +37,16 @@ expect "pre-push allows .env.example" "$clean" bash "$S/pre-push.sh"
 mkdir dist; echo x > dist/a.js; git add -f dist; git commit -qm dist
 expect "pre-push blocks build output" 1 bash "$S/pre-push.sh"
 git reset -q --hard HEAD~1
+echo X=1 > .env; git add -f .env; git commit -qm env; git rm -q .env; git commit -qm "rm env"
+expect "pre-push blocks a .env added then removed" 1 bash "$S/pre-push.sh"
+git reset -q --hard HEAD~2
+git switch -q develop; mkdir dist; echo x > dist/old.js; echo '{}' > package-lock.json
+git add -f dist package-lock.json; git commit -qm "old junk"; git push -q origin develop
+git switch -qc chore/cleanup; git rm -rq dist package-lock.json; git commit -qm "chore(repo): remove junk"
+expect "pre-push allows deleting a lockfile and build output" "$clean" bash "$S/pre-push.sh"
+git switch -q fix/x
 if command -v gitleaks >/dev/null 2>&1; then
-  printf 'aws_secret_access_key = %s\n' "$(head -c 30 /dev/urandom | base64)" > k.ts
+  printf 'aws_secret_access_key = %s\n' "$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 40)" > k.ts
   git add k.ts; git commit -qm leak
   expect "pre-push blocks a secret" 1 bash "$S/pre-push.sh"
   git reset -q --hard HEAD~1

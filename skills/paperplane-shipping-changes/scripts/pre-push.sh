@@ -27,17 +27,17 @@ fi
 git fetch --quiet origin 2>/dev/null || echo "warning: git fetch origin failed; checking against the local $base"
 git rev-parse --verify --quiet "$base" >/dev/null || { echo "base '$base' not found"; exit 2; }
 
-files=$(git diff --name-only "$base...HEAD")
-if [ -z "$files" ]; then
-  echo "no commits ahead of $base"
-fi
+# Files the branch adds or changes (a deletion is a cleanup, not a problem).
+files=$(git diff --name-only --diff-filter=d "$base...HEAD")
+[ "$(git rev-list --count "$base..HEAD")" -gt 0 ] || echo "no commits ahead of $base"
 
 if git ls-files --error-unmatch pnpm-lock.yaml >/dev/null 2>&1 || printf '%s\n' "$files" | grep -qx 'pnpm-lock.yaml'; then
   bad=$(printf '%s\n' "$files" | grep -E '(^|/)(package-lock\.json|yarn\.lock|bun\.lockb?)$' || true)
   [ -n "$bad" ] && block "second lockfile in this pnpm repo: $(echo $bad)"
 fi
 
-envs=$(printf '%s\n' "$files" | grep -E '(^|/)\.env(\..+)?$' | grep -vE '\.env\.example$' || true)
+# Every commit counts here: a .env added and removed again is still in the pushed history.
+envs=$(git log --name-only --diff-filter=d --format= "$base..HEAD" | grep -E '(^|/)\.env(\..+)?$' | grep -vE '\.env\.example$' | sort -u || true)
 [ -n "$envs" ] && block ".env file in the commits: $(echo $envs)"
 
 built=$(printf '%s\n' "$files" | grep -E '(^|/)(dist|coverage|build)/' || true)

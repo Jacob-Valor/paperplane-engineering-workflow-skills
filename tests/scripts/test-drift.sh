@@ -51,13 +51,13 @@ name: standard-checks
 on:
   workflow_call:
 jobs:
-  pnpm-only:
-    name: pnpm only
+  checks:
+    name: checks
     runs-on: ubuntu-latest
     steps:
       - name: Not a job name
-  pr-size:
-    name: PR size
+  ai-review:
+    name: AI review (advisory)
     runs-on: ubuntu-latest
 EOF
   {
@@ -83,7 +83,17 @@ else pass=$((pass+1)); echo "ok   step names are not job names"; fi
 setup
 printf '  deploy:\n    name: deploy preview\n' >> "$FAKE_GH/files/.github/workflows/standard-checks.yml"
 expect "new CI job not in skills is drift" 1 bash "$C"
-says "drift names the job" "^DRIFT +job name +'deploy preview'"
+says "drift names the job" "^DRIFT +job name +'standard / deploy preview'"
+
+setup
+printf '  deploy:\n    name: deploy preview\n' >> "$FAKE_GH/files/.github/workflows/standard-checks.yml"
+echo 'Wait for the deploy preview.' >> "$SKILLS_DIR/paperplane-reviewing-prs/SKILL.md"
+expect "job named without 'standard / ' is drift" 1 bash "$C"
+
+setup
+echo 'A red `standard / PR size` blocks.' >> "$SKILLS_DIR/paperplane-reviewing-prs/SKILL.md"
+expect "skill naming a removed job is drift" 1 bash "$C"
+says "drift names the removed job" "^DRIFT +job name +.*'standard / PR size'.*not a job"
 
 setup
 echo '- [ ] new item' >> "$FAKE_GH/files/templates/pull_request_template.md"

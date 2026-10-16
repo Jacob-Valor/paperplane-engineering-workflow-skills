@@ -67,6 +67,10 @@ expect "--previous: newest prod tag by tag date" 0 nt --previous
 same   "--previous: name" "$out" "prod-2026.10.10"
 expect "--previous ignores uat tags" 0 nt --previous --prefix uat
 same   "--previous uat: name" "$out" "uat-2026.10.09"
+expect "--previous --before: the tag before the bad release" 0 nt --previous --before prod-2026.10.10
+same   "--previous --before: name" "$out" "prod-2026.10.09.10"
+expect "--before an unknown tag is a usage error" 2 nt --previous --before prod-2026.01.01
+expect "--before without --previous is a usage error" 2 nt --before prod-2026.10.10
 
 before=$(git tag -l | wc -l)
 nt --date 2026-10-09 >/dev/null 2>&1

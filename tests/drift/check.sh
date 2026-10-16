@@ -39,16 +39,19 @@ err=$(gh api "repos/$repo" --jq .full_name 2>&1 >/dev/null) ||
 
 raw() { gh api "repos/$repo/contents/$1?ref=$ref" -H 'Accept: application/vnd.github.raw'; }
 
-# 1. Every CI job name is named somewhere in the skills.
+# 1. Skills name every CI job exactly as GitHub shows it (`standard / <job>`), and no job that is gone.
 if checks=$(raw .github/workflows/standard-checks.yml); then
   names=$(printf '%s\n' "$checks" | awk '/^jobs:/{j=1; next} j && /^    name:/{sub(/^    name:[ ]*/, ""); gsub(/^["'\'']|["'\'']$/, ""); print}')
   if [ -z "$names" ]; then
     bad "job names" "no job names found in standard-checks.yml; the file layout changed"
   else
     while IFS= read -r n; do
-      if grep -qF -- "$n" "$skills"/*/SKILL.md; then ok "job name" "$n"
-      else bad "job name" "'$n' is a CI job in standard-checks.yml but no SKILL.md mentions it"; fi
+      if grep -qF -- "\`standard / $n\`" "$skills"/*/SKILL.md; then ok "job name" "$n"
+      else bad "job name" "'standard / $n' is a CI job in standard-checks.yml but no SKILL.md names it as \`standard / $n\`"; fi
     done <<<"$names"
+    while IFS= read -r n; do
+      grep -qxF -- "$n" <<<"$names" || bad "job name" "a SKILL.md names 'standard / $n', which is not a job in standard-checks.yml"
+    done < <(grep -ohE '`standard / [^`]+`' "$skills"/*/SKILL.md | sed -e 's/^`standard \/ //' -e 's/`$//' | sort -u)
   fi
 else
   bad "job names" "could not fetch .github/workflows/standard-checks.yml"
