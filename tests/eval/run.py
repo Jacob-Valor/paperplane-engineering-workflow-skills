@@ -3,13 +3,15 @@
 
 Usage:
   python3 tests/eval/run.py [--scenarios s1,s9|all] [--reps 3] [--skill-ref <git-ref> | --no-skills]
-                            [--model <name>] [--judge-model <name>] [--jobs 4]
+                            [--model <name>] [--judge-model <name>] [--jobs 4] [--no-checks]
                             [--out tests/eval/out] [--trigger] [--dry-run]
 
 Each scenario run is a written role-play: one `claude -p` call (no tools, no session saved)
 answers the scenario with the skill under test, and a second call grades the answer against
-the scenario's row of the pass-criteria table in tests/README.md. `--trigger` runs
-tests/triggering.md instead and compares each answer with the expected table.
+the scenario's row of the pass-criteria table in tests/README.md. Then the regex checks in
+checks.py run on the answer: a run passes only when the judge and every check pass (--no-checks
+skips them). `--trigger` runs tests/triggering.md instead and compares each answer with the
+expected table.
 
 Skills come from the working tree, or from `git show <ref>:...` with --skill-ref. --no-skills leaves
 them out (the baseline that shows what a skill adds). --judge-model grades with another model than
@@ -30,6 +32,8 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+
+import checks
 
 REPO = Path(__file__).resolve().parents[2]
 TESTS = REPO / "tests"
@@ -324,6 +328,10 @@ def run_scenario(job, ctx):
             verdict = parse_judgement(raw)
         except ClaudeError as err:
             verdict = {"pass": False, "reason": f"{err}: {raw[:200]!r}"}
+        if ctx["checks"]:
+            verdict["checks"] = checks.run_checks(scenario["id"], answer)
+            verdict["judge_pass"] = verdict["pass"]
+            verdict["pass"] = verdict["pass"] and not checks.failed(verdict["checks"])
         cost = (answer_env.get("total_cost_usd") or 0) + (judge_env.get("total_cost_usd") or 0)
     except ClaudeError as err:
         verdict, cost, tokens = {"pass": False, "reason": str(err)}, 0, {}
@@ -333,7 +341,7 @@ def run_scenario(job, ctx):
                     "seconds": round(time.time() - started, 1), "cost_usd": round(cost, 4)})
     Path(f"{stem}.judge.json").write_text(json.dumps(verdict, indent=2))
     log(f"{scenario['id']} rep{rep}: {'PASS' if verdict['pass'] else 'FAIL'} "
-        f"({verdict['seconds']}s) {'' if verdict['pass'] else verdict['reason']}")
+        f"({verdict['seconds']}s) {'' if verdict['pass'] else fail_reason(verdict)}")
     return verdict
 
 
@@ -368,6 +376,15 @@ def cell(text):
     return text.replace("|", "\\|").replace("\n", " ")
 
 
+def fail_reason(verdict):
+    """The judge's reason, plus the names of failing checks (alone when the judge passed)."""
+    bad = checks.failed(verdict.get("checks", {}))
+    if not bad:
+        return verdict["reason"]
+    note = "checks failed: " + ", ".join(bad)
+    return f"{verdict['reason']} [{note}]" if not verdict["judge_pass"] else note
+
+
 def summary_table(scenario_results, trigger_results, ctx, wall):
     rows = ["| scenario | passed/total | failing reasons |", "|---|---|---|"]
     failures = 0
@@ -378,7 +395,7 @@ def summary_table(scenario_results, trigger_results, ctx, wall):
         runs = sorted(by_scenario[sid], key=lambda r: r["rep"])
         passed = sum(r["pass"] for r in runs)
         failures += len(runs) - passed
-        reasons = "; ".join(f"rep{r['rep']}: {r['reason']}" for r in runs if not r["pass"])
+        reasons = "; ".join(f"rep{r['rep']}: {fail_reason(r)}" for r in runs if not r["pass"])
         rows.append(f"| {sid} | {passed}/{len(runs)} | {cell(reasons)} |")
     if trigger_results:
         for num in sorted(ctx["expected"]):
@@ -392,7 +409,8 @@ def summary_table(scenario_results, trigger_results, ctx, wall):
     cost = sum(r["cost_usd"] for r in scenario_results + trigger_results)
     head = [f"# Eval summary {ctx['stamp']}", "",
             f"- Skills: {'none (--no-skills)' if ctx['no_skills'] else ctx['source'].label()}",
-            f"- Model: {ctx['model'] or 'claude default'} · judge: {ctx['judge_model'] or 'claude default'}",
+            f"- Model: {ctx['model'] or 'claude default'} · judge: {ctx['judge_model'] or 'claude default'}"
+            f" · checks: {'on' if ctx['checks'] else 'off (--no-checks)'}",
             f"- Wall time: {wall:.0f}s · reported cost: ${cost:.2f}",
             f"- Raw answers and judgements: {ctx['out']}", ""]
     return "\n".join(head + rows) + "\n", failures
@@ -410,6 +428,7 @@ def parse_args(argv):
     parser.add_argument("--model", default=None, help="claude model for answers and grading")
     parser.add_argument("--judge-model", default=None, help="claude model for grading (default: --model)")
     parser.add_argument("--jobs", type=int, default=4, help="concurrent runs (default 4)")
+    parser.add_argument("--no-checks", action="store_true", help="skip the regex checks in checks.py")
     parser.add_argument("--out", default=str(TESTS / "eval" / "out"), help="output directory")
     parser.add_argument("--trigger", action="store_true", help="run the triggering test")
     parser.add_argument("--dry-run", action="store_true", help="print prompts; call nothing")
@@ -494,12 +513,13 @@ def main(argv):
     stamp = out.name
     (out / "run.json").write_text(json.dumps(
         {"argv": argv, "skill_ref": args.skill_ref, "no_skills": args.no_skills, "model": args.model,
-         "judge_model": args.judge_model or args.model,
+         "judge_model": args.judge_model or args.model, "checks": not args.no_checks,
          "scenarios": [s["id"] for s in scenarios], "reps": args.reps, "trigger": args.trigger},
         indent=2))
     workdir = tempfile.mkdtemp(prefix="paperplane-eval-")
     ctx = {"out": out, "model": args.model, "judge_model": args.judge_model or args.model,
            "no_skills": args.no_skills, "criteria": criteria, "expected": expected,
+           "checks": not args.no_checks,
            "workdir": workdir, "source": source, "stamp": stamp}
     calls = len(scenarios) * args.reps * 2 + (args.reps if args.trigger else 0)
     log(f"{len(jobs)} run(s), {calls} claude call(s), {args.jobs} at a time; output in {out}")
