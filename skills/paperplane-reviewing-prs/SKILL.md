@@ -1,11 +1,11 @@
 ---
 name: paperplane-reviewing-prs
-description: Paper Plane's PR review checklist and report format; a human approves. Use when reviewing, assessing, approving, or merging a pull request in a paperplanehq repository, including PRs written with an AI agent, stacked PRs, drafts, and requests to "approve it so it can merge today" or turn on auto-merge.
+description: Paper Plane's PR review checklist and report format; a human approves. Use when reviewing, assessing, approving, or merging a pull request in a paperplanehq repository, including PRs written with an AI agent, stacked PRs, drafts, and requests to "approve it so it can merge today".
 license: Proprietary
 compatibility: Requires gh authenticated to the paperplanehq GitHub org.
 metadata:
   author: paperplanehq
-  guide-version: "2026-10-13"
+  guide-version: "2026-10-15"
 ---
 
 # Reviewing PRs at Paper Plane
@@ -35,7 +35,7 @@ It prints, in order: the PR (state, draft, base, head, size), the body, `gh pr c
 | Description matches diff | No unexplained files or changes |
 | Leftovers | No dead or commented-out code, "for later" helpers, leftover TODOs or debug logs (`console.log`, `print`). Send them back |
 | One concern | A native change (config plugin, `app.json`, `patches/`, `ios/`, `android/`, permissions) or a tooling bump inside a feature PR is a blocker: split it out. A native-only PR names the dev-client or EAS build that proved it |
-| CI | Every check green, except: `AI review (advisory)` red or missing never blocks (read its comment if there is one); `PR size` red means the body gives no size reason (see Size) |
+| CI | `standard / checks` green. It is one job whose steps are pnpm only, PR title, PR body is complete, PR size and secret scan; if it is red, open its log and name the failing step. The PR size step only warns (see Size). `standard / AI review (advisory)` red, missing or skipped (it skips drafts) never blocks; read its comment if there is one. The repo's own checks (e.g. `ci.yml`) must be green too |
 | Review threads | All resolved. The ruleset blocks the merge otherwise, so an open thread is a blocker |
 | Secrets | No `.env`, keys, tokens, or service-account JSON. If found, use **paperplane-secret-incidents** |
 | Lockfiles | Repo has `pnpm-lock.yaml`: any `package-lock.json`, `yarn.lock`, `bun.lock` or `bun.lockb` is a blocker; remove it (don't ask "which manager?"). If `package.json` changed, `pnpm-lock.yaml` changed too. Repo isn't on pnpm yet: the PR must not add a *second* lockfile or switch managers. Note that migration is a separate `chore/pnpm` PR |

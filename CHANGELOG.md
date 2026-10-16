@@ -2,6 +2,50 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.1
+
+From a benchmark on haiku, sonnet and opus (numbers in `tests/RESULTS.md`).
+
+### Changed
+- **shipping-changes**: run `gh pr view <N> --json isDraft` before stacking on an open PR; a draft bottom PR means branch from `develop` or wait. The first draft already has `AI-assisted: yes (<tool>) — <what you ran>` and `Risk: … Not done: …`. Step 7 says any commit after the human's review needs a new go-ahead before Ready.
+- **releasing**: store builds always come from `main`, also after the merge-back. The handover asks the CTO to confirm a `.3` tag.
+- **secret-incidents**: never print a flagged file or commit. Take the value out of an unpushed commit (amend or local rebase) before pushing; a new commit on top leaves it in history.
+- Descriptions: only shipping-changes (per PR) and repo-setup (repo setting) mention auto-merge.
+- `tests/eval/run.py`: `--no-skills` baseline, `--judge-model`, and token and time figures in each `repN.judge.json`. The benchmark commands are in `tests/eval/README.md`.
+
+## v2026.10.15
+
+Matches the guide of 2026-10-15 (`ci(standard): one checks job instead of five, AI review skips drafts and edits`, #8).
+
+### Changed
+- **reviewing-prs**: CI is one `standard / checks` job; a red one means opening its log and naming the failing step. The PR size step only warns. `standard / AI review (advisory)` skips drafts and never blocks.
+- **repo-setup**: "Done when" expects `standard / checks` and `standard / AI review (advisory)`, not five jobs. A `standard.yml` without the template's `concurrency` block gets replaced; `audit.sh` warns about it.
+- **secret-incidents**: the description names the secret scan as a step of `standard / checks`.
+- **shipping-changes**: CI skips the body check on drafts, so `check-pr-body.sh` before Ready is the only check.
+- **releasing**: rollback uses `next-tag.sh --previous --before <bad tag>`.
+- `guide-version` is `2026-10-15` in all five skills.
+
+### Fixed
+- `next-tag.sh --previous` printed the newest tag, which during a rollback is the bad one. New `--before <tag>` prints the tag before it.
+- `pre-push.sh` blocked branches that only delete a stray lockfile or build output, and let through a `.env` that was added and removed again on the branch (it stays in the pushed history).
+- `gather.sh` called a PR "not ready to approve" when only the advisory AI review was red. It now names the failing or pending checks that block.
+- `tests/drift/check.sh` passed when a job name appeared anywhere in a skill (`checks` matched `gh pr checks`). Skills must now name jobs as `` `standard / <job>` ``, and naming a job that no longer exists is drift.
+- Claude Code guard bypasses:
+  - commands after shell keywords (`if … then gh pr merge`)
+  - `$(…)` and backticks inside double quotes
+  - merge, auto-merge and approve calls through `gh api`, including graphql mutations
+  - `git stage`
+  - abbreviated options (`--force-w`, `--al`, `--no-verif`)
+  - `git -c core.hooksPath=…` and `git -c alias.*`
+  - `npm`/`npx` run from a subdirectory of a pnpm repo
+- Guard false positives:
+  - branches named `uat-…` were treated as release tags
+  - `git commit -uno` was treated as `--no-verify`
+  - heredoc PR bodies were parsed as commands
+  - `npm i -g pnpm` was blocked
+- `install-git-hook.sh` refuses husky repos, where husky would skip or overwrite the hook, and prints the line to add to `.husky/pre-push`. `install-claude-hook.sh` keeps a symlinked `settings.json` as a symlink.
+- Secret-scan tests were flaky: a random base64 key that starts with `/` doesn't match the gitleaks rule. They now use alphanumeric keys.
+
 ## v2026.10.13.3
 
 ### Fixed

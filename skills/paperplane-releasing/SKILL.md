@@ -5,7 +5,7 @@ license: Proprietary
 compatibility: Requires git and gh authenticated to the paperplanehq GitHub org.
 metadata:
   author: paperplanehq
-  guide-version: "2026-10-13"
+  guide-version: "2026-10-15"
 ---
 
 # Releasing at Paper Plane
@@ -37,14 +37,14 @@ gh pr list --base develop --state open          # unmerged work the CTO may want
 gh run list --branch develop --limit 3          # develop CI green? If red: stop and report, open nothing
 gh pr create --base uat  --head develop --title "chore(release): uat 2026-10-09" --body "<merged PRs since last release>"
 # only after the uat PR is merged AND the CTO confirms UAT testing passed:
-gh pr create --base main --head uat     --title "chore(release): prod 2026-10-09" --body "<…> Rollback: deploy <previous prod tag>"
+gh pr create --base main --head uat     --title "chore(release): prod 2026-10-09" --body "<…> Rollback: deploy <tag from next-tag.sh --previous>"
 ```
 
 **Tag name**: `bash <skill>/scripts/next-tag.sh` (`<skill>` = the folder this SKILL.md is in; it fetches tags first, prints the next name, never creates a tag). Add `--date YYYY-MM-DD` for another day, `--prefix uat` for UAT tags.
 
 - No tags for today: `prod-2026.10.09`
 - `prod-2026.10.09` exists: `prod-2026.10.09.2`
-- `.2` exists too: `.3`, and the script warns to confirm it with the CTO (the guide only shows `.2`). Say so to the CTO.
+- `.2` exists too: `.3`. The guide only shows `.2`, so your handover tells the CTO to confirm `.3` before tagging. The script's warning alone isn't enough.
 
 Never use `v…` prefixes, semver, or `gh release create`.
 
@@ -59,7 +59,7 @@ git switch main && git pull && git tag prod-2026.10.09.2 && git push origin prod
 
 If the repo's AGENTS.md tags UAT releases, add `uat-YYYY.MM.DD` on `uat` the same way.
 
-**Rollback** means deploying the previous `prod-*` tag (`bash <skill>/scripts/next-tag.sh --previous`). Never revert by force-pushing `main`.
+**Rollback** means deploying the `prod-*` tag before the bad one: `bash <skill>/scripts/next-tag.sh --previous --before <bad tag>`. (`--previous` alone prints the newest tag, which is the one deployed now: right for a release PR's `Rollback:` line, wrong once the bad tag exists.) Never revert by force-pushing `main`.
 
 ## Hotfix
 
@@ -69,7 +69,7 @@ If the repo's AGENTS.md tags UAT releases, add `uat-YYYY.MM.DD` on `uat` the sam
 
 ## Mobile store builds
 
-Store builds come from `main`; UAT builds come from `uat`. Tag the exact commit submitted to the store `app-vX.Y.Z`. A hotfix that isn't merged back yet is only on `main`, so the store build of it comes from `main`, never from `uat`. The CTO or release owner starts the build and pushes the tag; you write out the commands.
+Store builds always come from `main`, also after the merge-back; `uat` only gives UAT builds. Tag the exact commit submitted to the store `app-vX.Y.Z`. A hotfix that isn't merged back yet is only on `main`, which is one more reason the store build comes from `main`. The CTO or release owner starts the build and pushes the tag; you write out the commands.
 
 ## Rationalizations
 
@@ -80,3 +80,5 @@ Store builds come from `main`; UAT builds come from `uat`. Tag the exact commit 
 | "`v2026.10.09.2` is conventional" | The format is `prod-YYYY.MM.DD[.N]` (existing tags: `prod-2026.10.01`, `prod-2026.10.01.2`). |
 | "Hotfix is urgent, push to main" | It's still a PR. The ruleset rejects direct pushes. |
 | "Merging is the step that can wait; merge them Friday" | Merge-back is same-day. Open the PRs now and ask the CTO to merge them today. |
+| "Merge back into uat first, then build from uat" | Store builds come from `main` only. `uat` builds are for UAT testing. |
+| "next-tag.sh handles the `.3`" | It prints the name. The CTO still confirms `.3`; say so in the handover. |

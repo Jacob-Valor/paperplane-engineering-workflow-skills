@@ -1,7 +1,7 @@
 # Paper Plane engineering workflow skills
 
 [![validate](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml/badge.svg)](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml)
-Version **v2026.10.13.3**, matching the guide of 2026-10-13 and the team workflow page of 2026-10-13 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
+Version **v2026.10.15.1**, matching the guide of 2026-10-15 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
 
 Agent skills that encode the [Paper Plane engineering guide](https://github.com/paperplanehq/paperplane-engineering)
 for every repository in the `paperplanehq` GitHub org. They follow the
@@ -30,7 +30,7 @@ one by name: "use paperplane-shipping-changes".
 skills/<name>/SKILL.md                    the skill (frontmatter + instructions)
 skills/<name>/scripts/*.sh                checks the skill runs with `bash`
   shipping-changes/scripts/pre-push.sh    branch, lockfiles, .env, build output, gitleaks before a push
-  shipping-changes/scripts/check-pr-body.sh  the CI "PR body is complete" rules, locally
+  shipping-changes/scripts/check-pr-body.sh  the CI "PR body is complete" step, locally
   reviewing-prs/scripts/gather.sh         everything a reviewer needs for one PR
   releasing/scripts/next-tag.sh           next prod-/uat- tag name, or the rollback tag
   repo-setup/scripts/audit.sh             PASS/FAIL audit of one repo against the standard
@@ -56,7 +56,8 @@ Skills tell an agent the rules; hooks enforce them. Install both once per machin
 # Blocks pushes to develop/uat/main; runs pre-push.sh (secrets, lockfiles, .env, build output).
 # Tags and force-pushes of your own branch are allowed (the guide lets people rebase).
 # An existing pre-push hook keeps running. In a clone only agents push from, add
-# --block-force-push to block force-pushes too.
+# --block-force-push to block force-pushes too. In a husky repo the installer stops and
+# prints the line to add to .husky/pre-push instead.
 bash <skills>/paperplane-shipping-changes/hooks/install-git-hook.sh
 
 # Once per machine, for Claude Code: blocks gh pr merge (incl. --auto), approvals, force-push,
@@ -76,11 +77,11 @@ Every change, by hand or by an agent, takes this path (guide §2–4, §6–7).
 
 ```mermaid
 flowchart TD
-  A["Start from latest develop<br/>git switch -c feature/topic"] --> F["Push the branch the same day<br/>draft PR into develop, AI-assisted: yes"]
-  F --> B["Verify with the repo's scripts<br/>pnpm test · pnpm lint<br/>mobile: iOS and Android"]
-  B --> C["Commit type(scope): summary<br/>stage files by name, push"]
-  C --> E["Person running the agent<br/>reviews the full diff<br/>fills the body, marks Ready"]
-  E --> G{"CI: pnpm only · secret scan · PR title<br/>PR body is complete · PR size"}
+  A["Start from latest develop<br/>git switch -c feature/topic"] --> B["Verify with the repo's scripts<br/>pnpm test · pnpm lint<br/>mobile: iOS and Android"]
+  B --> C["Commit type(scope): summary<br/>stage files by name"]
+  C --> F["pre-push.sh, push the branch the same day<br/>draft PR into develop, AI-assisted: yes"]
+  F --> E["Person running the agent<br/>reviews the full diff<br/>fills the body, marks Ready"]
+  E --> G{"CI: standard / checks<br/>pnpm only · secret scan · PR title<br/>PR body is complete · PR size"}
   G -->|"green"| R{"Reviewer: a code owner, not the author,<br/>not who prompted the agent<br/>paperplane-reviewing-prs"}
   R -->|"approved, threads resolved"| D[("develop<br/>squash and merge or auto-merge")]
   G -->|"secret found"| S["paperplane-secret-incidents<br/>tell the CTO, rotate, fix the code"]

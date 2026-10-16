@@ -1,10 +1,10 @@
 ---
 name: paperplane-secret-incidents
-description: Paper Plane's process for leaked, flagged, or requested secrets; the CTO rotates. Use when a secret, API key, token, password, private key, service-account JSON, or .env file is involved in a paperplanehq repository — the gitleaks "secret scan (new commits)" check failed, a credential was committed or pushed, a value seems missing, or someone asks to share env values in a PR, issue, chat, or AI tool.
+description: Paper Plane's process for leaked, flagged, or requested secrets; the CTO rotates. Use when a secret, API key, token, password, private key, service-account JSON, or .env file is involved in a paperplanehq repository — the gitleaks secret scan step of the `standard / checks` CI job failed, a credential was committed or pushed, a value seems missing, or someone asks to share env values in a PR, issue, chat, or AI tool.
 license: Proprietary
 metadata:
   author: paperplanehq
-  guide-version: "2026-10-13"
+  guide-version: "2026-10-15"
 ---
 
 # Secret incidents at Paper Plane
@@ -16,6 +16,7 @@ A secret that has been committed, pushed, or pasted is leaked. **Rotation fixes 
 ## Rules
 
 - Never put secret values in code, commits, PR or issue text, logs, or chat. That includes your own replies: never repeat a value back.
+- Never print a flagged file or commit (`cat`, `git show`, `git diff` of it): that repeats the value in your output. Use the file, line and rule from the scan.
 - `.env.example` holds variable **names** with placeholders. Real values come from the CTO, or from the team password vault for dev/UAT if the repo's AGENTS.md says so. Never invent where they live.
 - Production secrets exist only in the cluster as SealedSecrets. Agents never read, create, or seal them.
 - If the user pastes a secret into the conversation, tell them it is now exposed and must be rotated through the CTO.
@@ -27,7 +28,7 @@ A secret that has been committed, pushed, or pasted is leaked. **Rotation fixes 
 2. **Tell the user to notify the CTO now.** Draft the message for them, **without the value**:
    > Secret scan flagged a `<type, e.g. Stripe live key>` in `<repo>` `<branch>` `<file>`, added in `<sha>`, pushed to GitHub: yes/no. Needs rotation.
 3. **Fix the code.** Read the value from an environment variable, add the name to `.env.example`, and commit (`fix(config): read stripe key from env`).
-4. **History.** CI scans every commit on the branch since `develop`, so it keeps failing while the old commit is in the branch. You may prepare a local `git rebase -i` that drops the secret. **The human does the force-push**, because agents never force-push. Never rewrite `develop`, `uat` or `main`.
+4. **History.** Not pushed yet (the hook or `pre-push.sh` stopped it): take the value out of the commit itself before pushing (`git commit --amend` for the last commit, a local `git rebase -i` for an older unpushed one), so it never reaches GitHub. A new commit on top leaves the value in history. Already pushed: CI scans every commit on the branch since `develop`, so it keeps failing while the old commit is in the branch. You may prepare a local `git rebase -i` that drops the secret. **The human does the force-push**, because agents never force-push. Never rewrite `develop`, `uat` or `main`.
 5. **Say in the PR's Risk section** that a secret was exposed and rotation was requested. Don't include the value.
 
 ## Rationalizations
