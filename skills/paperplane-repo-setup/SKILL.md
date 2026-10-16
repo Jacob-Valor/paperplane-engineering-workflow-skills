@@ -37,9 +37,9 @@ One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; 
 | `.github/CODEOWNERS` | Copy of `templates/CODEOWNERS` with **two** owners on every line. Ask the CTO for the GitHub handles; never invent them. The PR stays draft until they are filled in |
 | `AGENTS.md` | Copy the sections "How we work as a team", "Rules for AI coding agents" and "Rules for everyone" from a migrated sibling (e.g. `tripbuddy-backend`). Adjust the product intro line. Then write "## This repo": stack, layers, and the exact commands under **Verify before opening a PR**. If the sibling has no "## AI agents" section, add the one below. |
 | `CLAUDE.md` | `# CLAUDE.md`, a line saying to read and follow AGENTS.md, then a line with `@AGENTS.md` |
-| `.claude/settings.json`, `.claude/hooks/paperplane-guard.sh` | `bash <shipping skill>/hooks/install-claude-hook.sh --commit` (`<shipping skill>` = the `paperplane-shipping-changes` folder next to this one). Every Claude Code session in the repo then runs the guard, with nothing to install. Commit both files. |
+| `.claude/settings.json`, `.claude/hooks/paperplane-guard.sh`, `.omp/hooks/pre/paperplane-guard.ts` | `bash <shipping skill>/hooks/install-claude-hook.sh --commit` (`<shipping skill>` = the `paperplane-shipping-changes` folder next to this one). Every Claude Code and omp session in the repo then runs the guard, with nothing to install. Commit all three files. |
 | `.env.example` | Every variable **name** with a placeholder value. No real values. |
-| `.gitignore` | Ignores `.env`, `.env.*` and build output, with `!.env.example`. Must **not** ignore `pnpm-lock.yaml`, `.claude/settings.json` or `.claude/hooks/`. |
+| `.gitignore` | Ignores `.env`, `.env.*` and build output, with `!.env.example`. Must **not** ignore `pnpm-lock.yaml`, `.claude/settings.json`, `.claude/hooks/` or `.omp/hooks/`. |
 
 To copy a template or a sibling's AGENTS.md:
 ```bash

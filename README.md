@@ -1,7 +1,7 @@
 # Paper Plane engineering workflow skills
 
 [![validate](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml/badge.svg)](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml)
-Version **v2026.10.15.4**, matching the guide of 2026-10-15 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
+Version **v2026.10.15.5**, matching the guide of 2026-10-15 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
 
 Agent skills that encode the [Paper Plane engineering guide](https://github.com/paperplanehq/paperplane-engineering)
 for every repository in the `paperplanehq` GitHub org. They follow the
@@ -70,17 +70,21 @@ bash <skills>/paperplane-shipping-changes/hooks/install-git-hook.sh
 # and npm/yarn/bun in pnpm repos. Use --project instead for one repo only.
 bash <skills>/paperplane-shipping-changes/hooks/install-claude-hook.sh --user
 
-# Team repos: commit the guard so every Claude Code session in the repo runs it, nothing to install.
-# Writes .claude/hooks/paperplane-guard.sh and the hook in .claude/settings.json; commit both
-# (the chore/engineering-standard PR). Re-run after updating the skills to refresh the copy;
-# audit.sh warns when the committed copy is out of date.
+# Team repos: commit the guard so every Claude Code and omp session in the repo runs it, nothing to
+# install. Writes .claude/hooks/paperplane-guard.sh, the hook in .claude/settings.json, and the omp
+# adapter .omp/hooks/pre/paperplane-guard.ts; commit all three (the chore/engineering-standard PR).
+# Re-run after updating the skills to refresh the copies; audit.sh warns when they are out of date.
 bash <skills>/paperplane-shipping-changes/hooks/install-claude-hook.sh --commit
+
+# omp, once per machine (omp doesn't run Claude Code hooks): the same guard as an omp hook.
+bash <skills>/paperplane-shipping-changes/hooks/install-omp-hook.sh
 ```
 
-All modes have `--uninstall`. `git push --no-verify` skips the git hook; the skills forbid it, and the
-Claude Code guard blocks it. The committed guard is the one that matters most: in the tool-run evals,
-small models often never opened a skill, and only the guard stopped them. On 2026-10-16 none of the 13
-`paperplanehq` repos had it (`audit.sh` FAIL `claude-guard` on all 13).
+All installers have `--uninstall`. `git push --no-verify` skips the git hook; the skills forbid it,
+and the Claude Code and omp guards block it. The committed guard is the one that matters most: in
+the tool-run evals, small models often never opened a skill, and only the guard stopped them. On
+2026-10-16 none of the 13 `paperplanehq` repos had it (`audit.sh` FAIL `claude-guard` on all 13).
+Other agents (Codex, Cursor) get only the git pre-push hook and the server-side ruleset.
 
 ## Engineering workflow
 

@@ -17,6 +17,8 @@ jobs:
 
       - uses: astral-sh/setup-uv@v6
 
+      - uses: oven-sh/setup-bun@v2 # runs the omp adapter tests in test-hooks.sh
+
       - name: Validate every skill against the Agent Skills spec
         run: |
           for s in skills/*/SKILL.md; do

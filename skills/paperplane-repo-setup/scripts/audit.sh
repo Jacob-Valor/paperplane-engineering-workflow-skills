@@ -157,6 +157,8 @@ else
   elif [ "$vg" = "$(cat "$local_guard")" ]; then report PASS claude-guard-current "same as the installed skills"
   else report WARN claude-guard-current "differs from the installed skills' guard; $fix"; fi
 fi
+if raw .omp/hooks/pre/paperplane-guard.ts >/dev/null; then report PASS omp-guard "committed in .omp/hooks/pre/paperplane-guard.ts"
+else report WARN omp-guard "no .omp/hooks/pre/paperplane-guard.ts $on (omp ignores Claude Code hooks); $fix"; fi
 if has "$root" AGENTS.md && agents=$(raw AGENTS.md); then
   if printf '%s\n' "$agents" | grep -qE 'paperplane-(\*|shipping-changes|reviewing-prs|releasing|repo-setup|secret-incidents)'; then
     report PASS agents-skills "AGENTS.md names the paperplane-* skills"
