@@ -1,9 +1,11 @@
 name: eval
 
-# Agent scenarios and the triggering test through `claude -p` (tests/eval/run.py).
-# Needs the ANTHROPIC_API_KEY secret; without it every job is skipped with a note.
-# Pull requests that touch a SKILL.md run only the triggering test (cheap). The weekly run and
-# manual runs do every scenario on haiku, graded by opus.
+# Agent scenarios and the triggering test through `claude -p` (tests/eval/run.py), and the
+# tool-using sandbox eval (tests/eval/sandbox/run.py). Needs the ANTHROPIC_API_KEY secret.
+# Pull requests that touch a SKILL.md run only the triggering test (cheap); without the key they
+# skip with a warning, since forks never get secrets. The weekly run and manual runs do every
+# scenario on haiku, graded by opus, plus the sandbox with and without the hooks; without the key
+# they fail, so a missing key can't look like a passing eval.
 on:
   pull_request:
     paths: ["skills/*/SKILL.md"]
@@ -38,12 +40,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Skip without the API key
+      - name: Check the API key
         id: key
         run: |
-          if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "ANTHROPIC_API_KEY is not set, so the eval was skipped. Add it as a repository secret to run it." >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$ANTHROPIC_API_KEY" ]; then exit 0; fi
+          echo "ANTHROPIC_API_KEY is not set; add it as a repository secret (Settings > Secrets and variables > Actions)." >> "$GITHUB_STEP_SUMMARY"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            echo "::warning::ANTHROPIC_API_KEY is not set; the triggering test was skipped"
             echo "skip=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::ANTHROPIC_API_KEY is not set; the eval cannot run"
+            exit 1
           fi
 
       - name: Install the claude CLI
@@ -51,6 +58,13 @@ jobs:
         run: |
           curl -fsSL https://claude.ai/install.sh | bash
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Install pnpm and gitleaks (sandbox)
+        if: steps.key.outputs.skip != '1' && github.event_name != 'pull_request'
+        run: |
+          npm install -g pnpm@9
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            | sudo tar -xz -C /usr/local/bin gitleaks
 
       - name: Triggering test
         if: steps.key.outputs.skip != '1' && github.event_name == 'pull_request'
@@ -66,6 +80,8 @@ jobs:
           python3 tests/eval/run.py --scenarios "$SCENARIOS" --reps "$REPS" --model "$MODEL" \
             --judge-model opus --jobs 4 --out eval-out || status=$?
           python3 tests/eval/run.py --trigger --reps 3 --model "$MODEL" --out eval-out || status=$?
+          git config --global user.name "eval bot"; git config --global user.email "eval@example.com"
+          python3 tests/eval/sandbox/run.py --reps 2 --model "$MODEL" --enforcement both --jobs 4 --out eval-out || status=$?
           exit "${status:-0}"
 
       - name: Summary

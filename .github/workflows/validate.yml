@@ -30,6 +30,13 @@ jobs:
           python3 -m py_compile tests/eval/run.py tests/eval/checks.py
           python3 tests/eval/checks.py --self-test
 
+      - name: README version matches the newest CHANGELOG entry
+        run: |
+          want=$(grep -m1 -oE '^## v[0-9.]+' CHANGELOG.md | cut -c4-)
+          got=$(grep -m1 -oE 'Version \*\*v[0-9.]+\*\*' README.md | grep -oE 'v[0-9.]+')
+          [ "$want" = "$got" ] || { echo "::error::README says $got, CHANGELOG's newest entry is $want"; exit 1; }
+          echo "version $got"
+
       - name: Install gitleaks
         env:
           GITLEAKS_VERSION: 8.30.1
