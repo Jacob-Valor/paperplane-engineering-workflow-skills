@@ -49,6 +49,12 @@ if [ "$uninstall" -eq 1 ]; then
   exit 0
 fi
 
+case "$(git config --get core.hooksPath)" in
+  *.husky*)
+    echo "this repo uses husky (core.hooksPath=$(git config --get core.hooksPath)); husky would skip or overwrite our hook."
+    echo "add this line to .husky/pre-push instead: bash $(printf '%q' "$src") \"\$@\""
+    exit 1 ;;
+esac
 [ -f "$src" ] || { echo "missing $src; reinstall the skill"; exit 1; }
 mkdir -p "$hooks" || { echo "cannot create $hooks"; exit 1; }
 
