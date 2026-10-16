@@ -142,5 +142,26 @@ else
   fi
 fi
 
+# Committed Claude Code guard (install-claude-hook.sh --commit) and AGENTS.md pointing at the skills.
+fix="run: bash <skills>/paperplane-shipping-changes/hooks/install-claude-hook.sh --commit"
+local_guard="$(cd "$(dirname "$0")" && pwd)/../../paperplane-shipping-changes/hooks/claude-guard.sh"
+if ! cs=$(raw .claude/settings.json); then
+  report FAIL claude-guard "no .claude/settings.json $on; $fix"
+elif ! printf '%s\n' "$cs" | grep -q '\.claude/hooks/paperplane-guard\.sh'; then
+  report FAIL claude-guard ".claude/settings.json $on has no paperplane guard hook; $fix"
+elif ! vg=$(raw .claude/hooks/paperplane-guard.sh); then
+  report FAIL claude-guard "no .claude/hooks/paperplane-guard.sh $on; $fix"
+else
+  report PASS claude-guard "committed in .claude/settings.json and .claude/hooks/paperplane-guard.sh"
+  if [ ! -f "$local_guard" ]; then report WARN claude-guard-current "cannot compare: no $local_guard"
+  elif [ "$vg" = "$(cat "$local_guard")" ]; then report PASS claude-guard-current "same as the installed skills"
+  else report WARN claude-guard-current "differs from the installed skills' guard; $fix"; fi
+fi
+if has "$root" AGENTS.md && agents=$(raw AGENTS.md); then
+  if printf '%s\n' "$agents" | grep -qE 'paperplane-(\*|shipping-changes|reviewing-prs|releasing|repo-setup|secret-incidents)'; then
+    report PASS agents-skills "AGENTS.md names the paperplane-* skills"
+  else report WARN agents-skills "AGENTS.md does not mention the paperplane-* skills; add the \"## AI agents\" section"; fi
+fi
+
 echo "summary: $repo app=$app  $npass pass, $nfail fail, $nwarn warn"
 [ "$nfail" -eq 0 ]

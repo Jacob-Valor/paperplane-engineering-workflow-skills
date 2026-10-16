@@ -68,6 +68,8 @@ jobs:
 EOF
 )
 ROOT=(AGENTS.md CLAUDE.md .env.example .github package.json pnpm-lock.yaml app.json src)
+GUARD="$here/skills/paperplane-shipping-changes/hooks/claude-guard.sh"
+CLAUDE_SETTINGS='{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/paperplane-guard.sh\""}]}]}}'
 compliant() {
   rm -f "$FAKE_GH"/*
   serve "repos/$R" "$(settings true)"
@@ -77,6 +79,9 @@ compliant() {
   serve "repos/$R/contents/.github?ref=develop" "$(names CODEOWNERS pull_request_template.md workflows)"
   serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '# owners\n* @paperplanehq/leads @alice\n/ios/ @bob @carol # mobile\n')"
   serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$WF"
+  serve "repos/$R/contents/.claude/settings.json?ref=develop" "$CLAUDE_SETTINGS"
+  serve "repos/$R/contents/.claude/hooks/paperplane-guard.sh?ref=develop" "$(cat "$GUARD")"
+  serve "repos/$R/contents/AGENTS.md?ref=develop" "$(printf '# AGENTS.md\n## AI agents\nLoad the paperplane-* skills before any git or gh work.\n')"
 }
 
 compliant
@@ -143,6 +148,31 @@ compliant
 serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's/@develop/@main/')"
 expect "audit: workflow pinned to another ref fails" 1 bash "$A" "$R"
 says "audit: shows the wrong ref" '^FAIL  standard-workflow .*@main'
+
+compliant
+serve "repos/$R/contents/.claude/settings.json?ref=develop" '{"permissions":{"allow":["Bash(pnpm test)"]}}'
+expect "audit: settings.json without the guard hook fails" 1 bash "$A" "$R"
+says "audit: names the claude-guard check" '^FAIL  claude-guard .*settings\.json'
+
+compliant
+serve "repos/$R/contents/.claude/settings.json?ref=develop" ""
+expect "audit: missing .claude/settings.json fails" 1 bash "$A" "$R"
+says "audit: names the missing settings file" '^FAIL  claude-guard .*settings\.json'
+
+compliant
+serve "repos/$R/contents/.claude/hooks/paperplane-guard.sh?ref=develop" ""
+expect "audit: missing vendored guard fails" 1 bash "$A" "$R"
+says "audit: names the missing guard script" '^FAIL  claude-guard .*paperplane-guard\.sh'
+
+compliant
+serve "repos/$R/contents/.claude/hooks/paperplane-guard.sh?ref=develop" "$(sed 's/merge/MERGE/' "$GUARD")"
+expect "audit: outdated vendored guard is a WARN only" 0 bash "$A" "$R"
+says "audit: names the outdated guard" '^WARN  claude-guard-current .*install-claude-hook\.sh --commit'
+
+compliant
+serve "repos/$R/contents/AGENTS.md?ref=develop" "$(printf '# AGENTS.md\nSee paperplanehq/paperplane-engineering.\n')"
+expect "audit: AGENTS.md without the skills is a WARN only" 0 bash "$A" "$R"
+says "audit: names the AGENTS.md skills warning" '^WARN  agents-skills '
 
 compliant
 serve "repos/$R" ""

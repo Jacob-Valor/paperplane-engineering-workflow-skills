@@ -286,5 +286,35 @@ check "installer: broken file unchanged" grep -qx '{ broken' "$nh/.claude/settin
 expect "installer: outside a repo without --user" 2 in_dir "$work" bash "$H/install-claude-hook.sh"
 expect "installer: usage error" 2 bash "$H/install-claude-hook.sh" --bogus
 
+# ---------------------------------------------------------------- Claude installer --commit (team repo)
+cr="$work/commit-repo"; git init -q "$cr"; mkdir -p "$cr/sub" "$cr/.claude"
+printf '{"permissions": {"allow": ["Bash(pnpm test)"]}}\n' > "$cr/.claude/settings.json"
+vend="$cr/.claude/hooks/paperplane-guard.sh"
+vcount() { grep -o 'paperplane-guard\.sh' "$1" 2>/dev/null | wc -l | tr -d ' '; }
+guard_cmd() { jq -r '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[].command | select(test("paperplane-guard"))' "$cr/.claude/settings.json"; }
+expect "installer: --commit from a subdirectory" 0 in_dir "$cr/sub" bash "$H/install-claude-hook.sh" --commit
+check "installer: --commit names both files to commit" grep -qF 'git add .claude/settings.json .claude/hooks/paperplane-guard.sh' /tmp/pp-test-out.$$
+check "installer: --commit vendors the guard" cmp -s "$H/claude-guard.sh" "$vend"
+check "installer: --commit command uses CLAUDE_PROJECT_DIR" test "$(guard_cmd)" = 'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/paperplane-guard.sh"'
+check "installer: --commit writes the committed settings, not settings.local.json" test ! -e "$cr/.claude/settings.local.json"
+echo stale > "$vend"
+expect "installer: --commit again" 0 in_dir "$cr" bash "$H/install-claude-hook.sh" --commit
+check "installer: --commit one entry after two runs" test "$(vcount "$cr/.claude/settings.json")" = 1
+check "installer: --commit refreshes the vendored copy" cmp -s "$H/claude-guard.sh" "$vend"
+check "installer: --commit keeps other settings" grep -q 'Bash(pnpm test)' "$cr/.claude/settings.json"
+expect "committed guard: blocks git push origin develop" 2 env CLAUDE_PROJECT_DIR="$cr" bash -c "$(declare -f hook_json); cd /; hook_json 'git push origin develop' '$cr' | $(guard_cmd)"
+check "committed guard: block reason comes from the guard" grep -q '^paperplane guard: ' /tmp/pp-test-out.$$
+expect "committed guard: allows a feature branch push" 0 env CLAUDE_PROJECT_DIR="$cr" bash -c "$(declare -f hook_json); cd /; hook_json 'git push -u origin feature/x' '$cr' | $(guard_cmd)"
+expect "installer: --commit --uninstall" 0 in_dir "$cr" bash "$H/install-claude-hook.sh" --commit --uninstall
+check "installer: --commit uninstall removes the entry" test "$(vcount "$cr/.claude/settings.json")" = 0
+check "installer: --commit uninstall removes the vendored copy" test ! -e "$vend"
+check "installer: --commit uninstall keeps other settings" grep -q 'Bash(pnpm test)' "$cr/.claude/settings.json"
+mv "$cr/.claude/settings.json" "$work/dotfiles/team-settings.json"; ln -s "$work/dotfiles/team-settings.json" "$cr/.claude/settings.json"
+expect "installer: --commit without jq, symlinked settings" 0 in_dir "$cr" env PATH="$nojq" "$BASH" "$H/install-claude-hook.sh" --commit
+check "installer: --commit symlink kept" test -L "$cr/.claude/settings.json"
+check "installer: --commit symlink target updated" test "$(vcount "$work/dotfiles/team-settings.json")" = 1
+check "installer: --commit without jq vendors the guard" cmp -s "$H/claude-guard.sh" "$vend"
+expect "installer: --commit outside a repo" 2 in_dir "$work" bash "$H/install-claude-hook.sh" --commit
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

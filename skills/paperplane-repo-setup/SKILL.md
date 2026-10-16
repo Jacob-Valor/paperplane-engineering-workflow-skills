@@ -20,7 +20,7 @@ The standard is applied by **copying** what `paperplanehq/paperplane-engineering
 bash <skill>/scripts/audit.sh paperplanehq/<repo>   # <skill> = the folder this SKILL.md is in; read-only
 ```
 
-One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; merge settings (squash and merge commit on, rebase off, delete branch on merge, auto-merge allowed); the `protect-develop-uat-main` ruleset; `AGENTS.md`, `CLAUDE.md`, `.env.example`, PR template, `pnpm-lock.yaml` and no other lockfile; CODEOWNERS with two owners per line; `standard.yml` calling `standard-checks.yml@develop`, with `ready_for_review`, `concurrency` and, for app repos (`app.json`/`eas.json` found, or `--app`), `mobile: true`. Exit 1 means at least one FAIL. Every FAIL maps to a section below.
+One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; merge settings (squash and merge commit on, rebase off, delete branch on merge, auto-merge allowed); the `protect-develop-uat-main` ruleset; `AGENTS.md` (naming the `paperplane-*` skills), `CLAUDE.md`, `.env.example`, PR template, `pnpm-lock.yaml` and no other lockfile; CODEOWNERS with two owners per line; `standard.yml` calling `standard-checks.yml@develop`, with `ready_for_review`, `concurrency` and, for app repos (`app.json`/`eas.json` found, or `--app`), `mobile: true`; the committed Claude Code guard, same as the installed skills' copy. Exit 1 means at least one FAIL. Every FAIL maps to a section below.
 
 **Order** (the `pnpm only` step of `standard / checks` fails while another lockfile exists):
 
@@ -35,10 +35,11 @@ One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; 
 | `.github/workflows/standard.yml` | Exact copy of `templates/standard.yml`. It calls the reusable `standard-checks.yml@develop`: one `standard / checks` job (pnpm only, PR title, PR body, PR size, secret scan) and `standard / AI review (advisory)`. **App repo** (TripBuddy app, Sanaam app, Studio app): uncomment `with: mobile: true`, or the iOS/Android lines are never checked. An existing file that differs from the template (missing `ready_for_review`, `concurrency` or `mobile: true`) gets replaced. Never write your own copies of these checks. Repo build/test CI goes in a separate `ci.yml`. |
 | `.github/pull_request_template.md` | Exact copy of `templates/pull_request_template.md` |
 | `.github/CODEOWNERS` | Copy of `templates/CODEOWNERS` with **two** owners on every line. Ask the CTO for the GitHub handles; never invent them. The PR stays draft until they are filled in |
-| `AGENTS.md` | Copy the sections "How we work as a team", "Rules for AI coding agents" and "Rules for everyone" from a migrated sibling (e.g. `tripbuddy-backend`). Adjust the product intro line. Then write "## This repo": stack, layers, and the exact commands under **Verify before opening a PR**. |
+| `AGENTS.md` | Copy the sections "How we work as a team", "Rules for AI coding agents" and "Rules for everyone" from a migrated sibling (e.g. `tripbuddy-backend`). Adjust the product intro line. Then write "## This repo": stack, layers, and the exact commands under **Verify before opening a PR**. If the sibling has no "## AI agents" section, add the one below. |
 | `CLAUDE.md` | `# CLAUDE.md`, a line saying to read and follow AGENTS.md, then a line with `@AGENTS.md` |
+| `.claude/settings.json`, `.claude/hooks/paperplane-guard.sh` | `bash <shipping skill>/hooks/install-claude-hook.sh --commit` (`<shipping skill>` = the `paperplane-shipping-changes` folder next to this one). Every Claude Code session in the repo then runs the guard, with nothing to install. Commit both files. |
 | `.env.example` | Every variable **name** with a placeholder value. No real values. |
-| `.gitignore` | Ignores `.env`, `.env.*` and build output, with `!.env.example`. Must **not** ignore `pnpm-lock.yaml`. |
+| `.gitignore` | Ignores `.env`, `.env.*` and build output, with `!.env.example`. Must **not** ignore `pnpm-lock.yaml`, `.claude/settings.json` or `.claude/hooks/`. |
 
 To copy a template or a sibling's AGENTS.md:
 ```bash
@@ -47,6 +48,14 @@ raw paperplane-engineering templates/standard.yml > .github/workflows/standard.y
 raw paperplane-engineering templates/pull_request_template.md > .github/pull_request_template.md
 raw paperplane-engineering templates/CODEOWNERS > .github/CODEOWNERS               # then fill in the owners
 raw tripbuddy-backend AGENTS.md > AGENTS.md   # then edit as above
+```
+
+The `## AI agents` section of `AGENTS.md`:
+```markdown
+## AI agents
+- Load the `paperplane-*` skills before any git or gh work (paperplane-shipping-changes to commit, push and open PRs).
+- `.claude/settings.json` runs the committed guard `.claude/hooks/paperplane-guard.sh`. It blocks forbidden commands: merges, approvals, pushes to develop/uat/main, force-pushes, release tags, `--no-verify`. Never remove or bypass it.
+- Once per clone, install the git pre-push hook: `bash <skills>/paperplane-shipping-changes/hooks/install-git-hook.sh` (`<skills>`: where the skills are installed, e.g. `~/.agents/skills`).
 ```
 
 ## 3. pnpm migration (separate PR, `chore/pnpm`)
