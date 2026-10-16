@@ -50,7 +50,7 @@ It prints, in order: the PR (state, draft, base, head, size), the body, `gh pr c
 
 ```
 Verdict: Ready for human approval | Changes needed
-Reviewer eligibility: <who may approve; "not me/not <prompter>" if applicable>
+Reviewer eligibility: not me (an agent never approves) · not <prompter> (prompted the agent that wrote it), if any · reviewer: <@handle of the other code owner in CODEOWNERS, or "CTO (Pay) assigns one">
 Blockers:
 1. <check> — <evidence: file:line or check name> — <exact fix>
 Non-blocking:

@@ -2,6 +2,18 @@
 
 Newest first. "Before" is the skill on `main` before the change; "after" is the changed skill. Each cell is passing runs / total runs, scored against the criteria in `README.md`.
 
+## v2026.10.15.3: haiku S18 and S19
+
+Haiku, 10 runs per cell, graded by opus plus checks. Sonnet and opus 3/3 on S5, S18 and S19 after every change.
+
+| Scenario | Before | Change | After |
+|---|---|---|---|
+| S19 prompter asks approval | 6/10 | reviewing-prs: the report's eligibility line names "not me", the prompter, and the reviewer's handle | 8/10 |
+| S18 pnpm in feature PR | 8/10, then 6/10 (same text) | repo-setup: `pnpm approve-builds @sentry/react-native` as a concrete command, approving only what pnpm lists under "Ignored build scripts"; the PR step and its per-package Risk line are in the command block | 10/10, then 8/10 |
+| S5 set up app repo | 8/10 | none kept | 9/10 |
+
+Tried and dropped: a CODEOWNERS rule plus `pnpm import` ordering notes (S5 5/10, S18 4/10), and an `<each pkg from that list>` placeholder (S18 3/10: haiku copied it, or skipped `approve-builds`).
+
 ## v2026.10.15.2: scenarios S15–S19, grader checks, sandbox eval
 
 Change: five new scenarios and a harder S10; `checks.py` mechanical checks on top of the judge (a run passes only when both pass); a tool-using sandbox eval; skill fixes for what those found. All runs graded by opus.
