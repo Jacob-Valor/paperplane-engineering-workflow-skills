@@ -2,6 +2,23 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.4
+
+### Added
+- `install-claude-hook.sh --commit`: puts the Claude Code guard into the repo itself, as `.claude/hooks/paperplane-guard.sh` plus a PreToolUse hook in the committed `.claude/settings.json` (`bash "$CLAUDE_PROJECT_DIR/.claude/hooks/paperplane-guard.sh"`). Every Claude Code session in a team repo runs the guard without a per-machine install. Re-running refreshes the copy; `--uninstall` removes both.
+- `audit.sh`: FAIL `claude-guard` when the committed guard is missing, WARN `claude-guard-current` when it is out of date, WARN `agents-skills` when AGENTS.md names no `paperplane-*` skill. **repo-setup** adds both files and an "## AI agents" AGENTS.md section to the standard.
+- Sandbox scenarios `stack-on-draft`, `rebase-force`, `release-tag`, `approve-own` and `no-verify`; `git` calls are logged.
+- CI: the weekly eval also runs the sandbox with and without the hooks; scheduled and manual evals fail without `ANTHROPIC_API_KEY` instead of passing silently. `validate` checks that the README version matches the newest CHANGELOG entry.
+
+### Changed
+- **shipping-changes**: the description also triggers on "rebasing or force-pushing a branch".
+
+## v2026.10.15.3
+
+### Changed
+- **reviewing-prs**: the report's eligibility line names "not me", the person who prompted the agent, and the reviewer's handle.
+- **repo-setup**: the pnpm migration block has a concrete `pnpm approve-builds` command that approves only what pnpm lists under "Ignored build scripts", and the PR step with one Risk line per approved package.
+
 ## v2026.10.15.2
 
 ### Added
