@@ -55,13 +55,16 @@ raw tripbuddy-backend AGENTS.md > AGENTS.md   # then edit as above
 corepack enable && corepack use pnpm@latest    # writes "packageManager" to package.json
 pnpm import                                    # converts package-lock/yarn.lock, keeping resolved versions
 git rm --ignore-unmatch package-lock.json yarn.lock bun.lock bun.lockb
-pnpm install && pnpm approve-builds <pkg> …    # name each dependency pnpm lists as having an ignored install script (no args = interactive prompt)
+pnpm install && pnpm approve-builds @sentry/react-native   # approve exactly the packages pnpm lists under "Ignored build scripts" (here Sentry); not every native module has one
 # switch every npm/yarn/npx use in scripts, CI, Dockerfiles, EAS config and AGENTS.md to pnpm, then:
 pnpm test                                      # and the repo's build
 pnpm exec expo run:ios && pnpm exec expo run:android   # React Native/Expo: before Ready, even when asked to skip
+gh pr create --draft --base develop --title "chore(pnpm): switch from yarn to pnpm" --body-file pr-body.md
+# pr-body.md Risk has one line per approved package, e.g.:
+#   - @sentry/react-native: @sentry/cli downloads its binary to upload source maps
 ```
 
-The PR body lists every approved package with what its install script does, one line each, e.g. `- @sentry/react-native: @sentry/cli downloads its binary to upload source maps`. A root `postinstall` (e.g. `patch-package`) is not a dependency build; it isn't approved. Name both builds in the `- iOS:`/`- Android:` lines: a new lockfile changes how native modules install. If Metro can't resolve packages, add `node-linker=hoisted` to `.npmrc`. After the PR merges, feature branches merge `develop` in (see **paperplane-shipping-changes**).
+For each approved package, the PR's Risk gets one line `- <pkg>: <what its install script does>`, e.g. `- @sentry/react-native: @sentry/cli downloads its binary to upload source maps`. No line, no approval. A root `postinstall` (e.g. `patch-package`) is not a dependency build; it isn't approved. Name both builds in the `- iOS:`/`- Android:` lines: a new lockfile changes how native modules install. If Metro can't resolve packages, add `node-linker=hoisted` to `.npmrc`. After the PR merges, feature branches merge `develop` in (see **paperplane-shipping-changes**).
 
 ## 4. Settings (the CTO applies them; you write the commands)
 
