@@ -316,5 +316,34 @@ check "installer: --commit symlink target updated" test "$(vcount "$work/dotfile
 check "installer: --commit without jq vendors the guard" cmp -s "$H/claude-guard.sh" "$vend"
 expect "installer: --commit outside a repo" 2 in_dir "$work" bash "$H/install-claude-hook.sh" --commit
 
+# ---------------------------------------------------------------- omp adapter (omp ignores Claude Code hooks)
+expect "installer: --commit adds the omp adapter" 0 in_dir "$cr" bash "$H/install-claude-hook.sh" --commit
+check "installer: --commit omp adapter is omp-guard.ts" cmp -s "$H/omp-guard.ts" "$cr/.omp/hooks/pre/paperplane-guard.ts"
+check "installer: --commit names the omp adapter to commit" grep -qF '.omp/hooks/pre/paperplane-guard.ts' /tmp/pp-test-out.$$
+if command -v bun >/dev/null 2>&1; then
+  # Load the adapter the way omp does (default-export factory, pi.on("tool_call")) and call the handler.
+  omp_call() { # omp_call <adapter path> <command> <cwd>: prints "block: <reason>" or "allow"
+    bun -e 'const [f, cmd, cwd] = process.argv.slice(1); let h;
+      (await import(f)).default({ on: (e, fn) => { if (e === "tool_call") h = fn; } });
+      const r = await h({ toolName: "bash", input: { command: cmd } }, { cwd });
+      console.log(r?.block ? "block: " + r.reason : "allow");' "$1" "$2" "$3"
+  }
+  ad="$cr/.omp/hooks/pre/paperplane-guard.ts"
+  check "omp adapter (committed): blocks git push origin develop" bash -c "$(declare -f omp_call); omp_call '$ad' 'git push origin develop' '$cr/sub' | grep -q '^block: paperplane guard: '"
+  check "omp adapter (committed): allows a feature branch push" bash -c "$(declare -f omp_call); omp_call '$ad' 'git push -u origin feature/x' '$cr' | grep -qx allow"
+  check "omp adapter: ignores other tools" bash -c "cd '$cr' && bun -e 'let h; (await import(\"$ad\")).default({ on: (e, fn) => { h = fn; } }); const r = await h({ toolName: \"read\", input: { path: \"x\" } }, { cwd: \"$cr\" }); console.log(r === undefined ? \"ok\" : \"bad\")' | grep -qx ok"
+  oh="$work/omp-agent"
+  expect "omp installer: --user copies adapter and guard" 0 env PI_CODING_AGENT_DIR="$oh" bash "$H/install-omp-hook.sh"
+  check "omp installer: guard beside the adapter" cmp -s "$H/claude-guard.sh" "$oh/hooks/pre/paperplane-guard.sh"
+  check "omp adapter (user): blocks in a repo without a committed guard" bash -c "$(declare -f omp_call); omp_call '$oh/hooks/pre/paperplane-guard.ts' 'gh pr merge 5 --squash' '$work' | grep -q '^block: '"
+  expect "omp installer: --uninstall" 0 env PI_CODING_AGENT_DIR="$oh" bash "$H/install-omp-hook.sh" --uninstall
+  check "omp installer: --uninstall removes both files" test ! -e "$oh/hooks/pre/paperplane-guard.ts" -a ! -e "$oh/hooks/pre/paperplane-guard.sh"
+else
+  echo "skip omp adapter tests: bun not installed"
+fi
+expect "omp installer: usage error" 2 bash "$H/install-omp-hook.sh" --bogus
+expect "installer: --commit --uninstall removes the omp adapter too" 0 in_dir "$cr" bash "$H/install-claude-hook.sh" --commit --uninstall
+check "installer: omp adapter removed" test ! -e "$cr/.omp/hooks/pre/paperplane-guard.ts"
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -2,6 +2,12 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.5
+
+### Added
+- omp support for the guard. omp doesn't run Claude Code's `.claude/settings.json` hooks: with the committed guard in place, omp pushed straight to `develop`. `hooks/omp-guard.ts` is an omp hook that sends each bash call to the same `claude-guard.sh` and blocks on exit 2. `install-claude-hook.sh --commit` now also commits it as `.omp/hooks/pre/paperplane-guard.ts`; `install-omp-hook.sh` installs it once per machine.
+- `audit.sh`: WARN `omp-guard` when the repo has no committed omp adapter.
+
 ## v2026.10.15.4
 
 ### Added

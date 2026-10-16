@@ -4,8 +4,9 @@
 #   --project (default) <repo root>/.claude/settings.local.json, this clone only
 #   --user              $HOME/.claude/settings.json, every repo on this machine
 #   --commit            team repo: copies the guard to <repo root>/.claude/hooks/
-#                       paperplane-guard.sh and adds it to <repo root>/.claude/settings.json;
-#                       commit both files. Run it again to refresh the copy.
+#                       paperplane-guard.sh, adds it to <repo root>/.claude/settings.json, and adds
+#                       the omp adapter .omp/hooks/pre/paperplane-guard.ts (omp ignores Claude Code
+#                       hooks); commit all three files. Run it again to refresh the copies.
 # Keeps every other setting. Running it again does not add a second entry.
 # --uninstall removes only the paperplane guard entry (and the --commit copy).
 # Exit codes: 0 done · 1 settings file unreadable or not writable ·
@@ -39,6 +40,7 @@ fi
 if [ "$scope" = commit ]; then
   file="$root/.claude/settings.json"
   vendored="$root/.claude/hooks/paperplane-guard.sh"
+  omp_hook="$root/.omp/hooks/pre/paperplane-guard.ts"
   # shellcheck disable=SC2016  # Claude Code expands $CLAUDE_PROJECT_DIR when it runs the hook
   command='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/paperplane-guard.sh"'
 fi
@@ -113,9 +115,10 @@ else
 fi
 if [ "$scope" = commit ]; then
   if [ "$uninstall" -eq 1 ]; then
-    rm -f "$vendored" || { echo "cannot remove $vendored"; exit 1; }
+    rm -f "$vendored" "$omp_hook" || { echo "cannot remove $vendored or $omp_hook"; exit 1; }
   else
     mkdir -p "$(dirname "$vendored")" && cat "$guard" >"$vendored" || { echo "cannot write $vendored"; exit 1; }
+    mkdir -p "$(dirname "$omp_hook")" && cat "$(dirname "$guard")/omp-guard.ts" >"$omp_hook" || { echo "cannot write $omp_hook"; exit 1; }
   fi
 fi
 if [ "$uninstall" -eq 1 ]; then
@@ -125,5 +128,5 @@ else
   echo "restart Claude Code (or open /hooks) so it loads the hook"
 fi
 if [ "$scope" = commit ]; then
-  echo "commit both files: git add .claude/settings.json .claude/hooks/paperplane-guard.sh"
+  echo "commit all three files: git add .claude/settings.json .claude/hooks/paperplane-guard.sh .omp/hooks/pre/paperplane-guard.ts"
 fi

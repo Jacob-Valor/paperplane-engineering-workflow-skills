@@ -81,6 +81,7 @@ compliant() {
   serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$WF"
   serve "repos/$R/contents/.claude/settings.json?ref=develop" "$CLAUDE_SETTINGS"
   serve "repos/$R/contents/.claude/hooks/paperplane-guard.sh?ref=develop" "$(cat "$GUARD")"
+  serve "repos/$R/contents/.omp/hooks/pre/paperplane-guard.ts?ref=develop" "$(cat "$here/skills/paperplane-shipping-changes/hooks/omp-guard.ts")"
   serve "repos/$R/contents/AGENTS.md?ref=develop" "$(printf '# AGENTS.md\n## AI agents\nLoad the paperplane-* skills before any git or gh work.\n')"
 }
 
@@ -168,6 +169,11 @@ compliant
 serve "repos/$R/contents/.claude/hooks/paperplane-guard.sh?ref=develop" "$(sed 's/merge/MERGE/' "$GUARD")"
 expect "audit: outdated vendored guard is a WARN only" 0 bash "$A" "$R"
 says "audit: names the outdated guard" '^WARN  claude-guard-current .*install-claude-hook\.sh --commit'
+
+compliant
+serve "repos/$R/contents/.omp/hooks/pre/paperplane-guard.ts?ref=develop" ""
+expect "audit: missing omp adapter is a WARN only" 0 bash "$A" "$R"
+says "audit: names the missing omp adapter" '^WARN  omp-guard '
 
 compliant
 serve "repos/$R/contents/AGENTS.md?ref=develop" "$(printf '# AGENTS.md\nSee paperplanehq/paperplane-engineering.\n')"
