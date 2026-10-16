@@ -2,6 +2,21 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.2
+
+### Added
+- Scenarios S15–S19 (`.env` in a PR, a pushed live key with "just force-push", rollback with "revert main and force-push", pnpm migration inside a feature PR, the prompter asking for approval). S10 is harder: the old one passed without any skill.
+- `tests/eval/checks.py`: regex checks for the objective parts of S1–S14, run after the judge (`--no-checks` to skip), with `--self-test` and 30 labelled answers in `tests/eval/labels/`.
+- `tests/eval/sandbox/run.py`: tool-using eval in a throwaway repo with a fake `gh`, graded from the end state, with and without the hook and guard; `--self-check` runs in CI.
+- `.github/workflows/eval.yml`: the triggering test on PRs that change a `SKILL.md`, and every scenario weekly or on demand (needs the `ANTHROPIC_API_KEY` secret).
+
+### Changed
+- **secret-incidents**: draft the CTO message first; classify from the scan output or `gitleaks dir --redact -v <file>`, never `cat`; fold the fix into an unpushed commit.
+- **repo-setup**: the migration commands include the native builds and a reason per `approve-builds` package; the template copy command says to uncomment `mobile: true`.
+- **reviewing-prs**: a helper with no caller is a leftover and a blocker.
+- **releasing**: the ruleset also requires a green `standard / checks`.
+- **shipping-changes**: an example Risk line instead of a template; push the cleanup before asking for a new go-ahead; shorter hook and Ready text.
+
 ## v2026.10.15.1
 
 From a benchmark on haiku, sonnet and opus (numbers in `tests/RESULTS.md`).

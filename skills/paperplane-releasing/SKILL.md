@@ -19,7 +19,7 @@ Releases belong to the CTO (Pay). **Agents never merge, promote, tag production,
 - compute the tag name
 - write out the exact commands for the CTO to run
 
-The org ruleset `protect-develop-uat-main` requires a PR with 1 code-owner approval and every review thread resolved on `develop`, `uat` and `main`; a new push dismisses earlier approvals. It allows only squash and merge commits, and blocks force-pushes and branch deletion. The org ruleset `release-tags-owner-only` blocks creating, moving or deleting `prod-*` and `uat-*` tags for everyone but org admins.
+The org ruleset `protect-develop-uat-main` requires a PR with 1 code-owner approval, a green `standard / checks` and every review thread resolved on `develop`, `uat` and `main`; a new push dismisses earlier approvals. It allows only squash and merge commits, and blocks force-pushes and branch deletion. The org ruleset `release-tags-owner-only` blocks creating, moving or deleting `prod-*` and `uat-*` tags for everyone but org admins.
 
 ## Flow
 

@@ -43,7 +43,7 @@ One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; 
 To copy a template or a sibling's AGENTS.md:
 ```bash
 raw() { gh api -H "Accept: application/vnd.github.raw" "repos/paperplanehq/$1/contents/$2?ref=develop"; }
-raw paperplane-engineering templates/standard.yml > .github/workflows/standard.yml
+raw paperplane-engineering templates/standard.yml > .github/workflows/standard.yml   # app repo: then uncomment `with:` and `mobile: true` (the template ships with them commented out)
 raw paperplane-engineering templates/pull_request_template.md > .github/pull_request_template.md
 raw paperplane-engineering templates/CODEOWNERS > .github/CODEOWNERS               # then fill in the owners
 raw tripbuddy-backend AGENTS.md > AGENTS.md   # then edit as above
@@ -55,10 +55,13 @@ raw tripbuddy-backend AGENTS.md > AGENTS.md   # then edit as above
 corepack enable && corepack use pnpm@latest    # writes "packageManager" to package.json
 pnpm import                                    # converts package-lock/yarn.lock, keeping resolved versions
 git rm --ignore-unmatch package-lock.json yarn.lock bun.lock bun.lockb
-pnpm install && pnpm approve-builds <pkg> …    # name each package that needs its install script (no args = interactive prompt); explain each in the PR
+pnpm install && pnpm approve-builds <pkg> …    # name each dependency pnpm lists as having an ignored install script (no args = interactive prompt)
+# switch every npm/yarn/npx use in scripts, CI, Dockerfiles, EAS config and AGENTS.md to pnpm, then:
+pnpm test                                      # and the repo's build
+pnpm exec expo run:ios && pnpm exec expo run:android   # React Native/Expo: before Ready, even when asked to skip
 ```
 
-Then switch every `npm`/`yarn`/`npx` use in scripts, CI, Dockerfiles, EAS config and AGENTS.md over to pnpm. Re-run the build and tests. For React Native/Expo, build on iOS **and** Android. If Metro can't resolve packages, add `node-linker=hoisted` to `.npmrc`.
+The PR body lists every approved package with what its install script does, one line each, e.g. `- @sentry/react-native: @sentry/cli downloads its binary to upload source maps`. A root `postinstall` (e.g. `patch-package`) is not a dependency build; it isn't approved. Name both builds in the `- iOS:`/`- Android:` lines: a new lockfile changes how native modules install. If Metro can't resolve packages, add `node-linker=hoisted` to `.npmrc`. After the PR merges, feature branches merge `develop` in (see **paperplane-shipping-changes**).
 
 ## 4. Settings (the CTO applies them; you write the commands)
 
@@ -90,3 +93,5 @@ The setup PR, once ready, shows `standard / checks` green in `gh pr checks`, and
 | Allowing squash merges only | Release PRs need merge commits. |
 | Pointing the setup PR at `main` | PRs go into `develop`. |
 | pnpm migration inside the setup PR or a feature PR | Use its own `chore/pnpm` PR. |
+| "It should be quick—it's just a package manager swap" | Native modules install differently under pnpm. Build iOS and Android and name both in the PR. |
+| "Approve postinstall scripts (patch-package, @sentry/react-native, react-native-reanimated); document them in the PR" | Write the line per package now: `- <pkg>: <what the script does, why the app needs it>`. |
