@@ -94,8 +94,12 @@ fi
 [ $? -eq 0 ] && [ -n "$updated" ] || { echo "cannot parse $file as JSON; fix it by hand, it was not changed"; exit 1; }
 
 mkdir -p "$(dirname "$file")" || { echo "cannot create $(dirname "$file")"; exit 1; }
-tmp="$file.tmp.$$"
-printf '%s\n' "$updated" >"$tmp" && mv "$tmp" "$file" || { rm -f "$tmp"; echo "cannot write $file"; exit 1; }
+if [ -L "$file" ]; then  # keep a symlinked settings file (dotfiles): write through the link
+  printf '%s\n' "$updated" >"$file" || { echo "cannot write $file"; exit 1; }
+else
+  tmp="$file.tmp.$$"
+  printf '%s\n' "$updated" >"$tmp" && mv "$tmp" "$file" || { rm -f "$tmp"; echo "cannot write $file"; exit 1; }
+fi
 if [ "$uninstall" -eq 1 ]; then
   echo "removed the paperplane guard from $file"
 else

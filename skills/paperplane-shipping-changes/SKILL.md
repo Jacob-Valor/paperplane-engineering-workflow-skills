@@ -1,11 +1,11 @@
 ---
 name: paperplane-shipping-changes
-description: Paper Plane's rules for getting a change into develop through a branch and a draft PR. Use when making any code, config, or dependency change in a paperplanehq repository — creating a branch, committing, adding or updating packages, pushing, opening, stacking, or marking a pull request ready — and especially when asked to push straight to develop/uat/main, "just commit everything", turn on auto-merge, bundle unrelated changes, or skip the PR because of a deadline.
+description: Paper Plane's rules for getting a change into develop through a branch and a draft PR. Use when making any code, config, or dependency change in a paperplanehq repository — creating a branch, committing, adding or updating packages, pushing, opening, stacking, or marking a pull request ready — and especially when asked to push straight to develop/uat/main, "just commit everything", turn on auto-merge for a PR, bundle unrelated changes, or skip the PR because of a deadline.
 license: Proprietary
 compatibility: Requires git, gh and pnpm; gitleaks recommended. Written for the paperplanehq GitHub org.
 metadata:
   author: paperplanehq
-  guide-version: "2026-10-13"
+  guide-version: "2026-10-15"
 ---
 
 # Shipping changes at Paper Plane
@@ -47,23 +47,25 @@ Deadlines and explicit requests don't change these. Only the CTO (Pay) can grant
    git push -u origin <branch>
    gh pr create --draft --base develop --title "<type(scope): summary>" --body-file pr-body.md
    ```
-   Exit 1: don't push; a secret → **paperplane-secret-incidents**. Exit 3 (no `gitleaks`): read the full `git diff origin/develop...HEAD` for keys, then push. Body = the repo's `.github/pull_request_template.md`, every heading kept, `- Commands:`/`- iOS:`/`- Android:` lines kept (CI reads them).
+   Exit 1: don't push; a secret → **paperplane-secret-incidents**. Exit 3 (no `gitleaks`): read the full `git diff origin/develop...HEAD` for keys, then push. Body = the repo's `.github/pull_request_template.md`, every heading kept, `- Commands:`/`- iOS:`/`- Android:` lines kept (CI reads them). Fill these two lines in the first draft:
+   - `AI-assisted: yes (<tool>) — <what you ran>`. You are the AI, so it is never `no`.
+   - `Risk: <what could break>. Not done: <what isn't done or verified yet>`. Name builds and devices you actually used; never a placeholder.
 6. **Hand over**: show the full diff (`git diff origin/develop...HEAD`) and the PR URL. End your turn.
-7. **Ready**: only after the human says they reviewed the diff, and only when the body is complete:
+7. **Ready**: only after the human says they reviewed the diff. Any commit after their review, cleanup included, needs a new go-ahead: show `git diff` of the new commits and wait. The body must be complete:
    - How I verified it: commands and real results; iOS and Android devices, or `not a mobile change`. An untested platform keeps it draft.
    - Risk: what could break **and what is not done**. Over ~400 changed lines (lockfiles excluded): `Size: <reason>`, or split.
    - Checklist: all 7 boxes, ticked only where true.
    - `AI-assisted: yes (<tool>) — <what you ran>`. The `yes / no` placeholder fails CI.
    - The diff has no dead or commented-out code, "for later" helpers, leftover TODOs or debug logs. Remove them first; the reviewer sends them back.
 
-   Check it with `bash <skill>/scripts/check-pr-body.sh pr-body.md` (same rules as CI; app repos detected from `standard.yml`), then `gh pr ready <N>`, report the URL, stop. The reviewer is never the person who prompted you.
+   Check it with `bash <skill>/scripts/check-pr-body.sh pr-body.md` (same rules as CI, which skips the body check while the PR is a draft; app repos detected from `standard.yml`), then `gh pr ready <N>`, report the URL, stop. The reviewer is never the person who prompted you.
 8. **Review comments**: every comment gets an answer **the same day**: a fix, or a reply in the thread saying why not. If the user defers a comment, draft that reply for them to post today ("Not in this PR: <reason>; follow-up: <link or plan>"). No comment stays silent. Resolving threads is for the author and reviewer.
 9. **Old drafts**: a draft open more than three working days gets split, or the user asks for help. Tell them; don't keep adding to it.
 
 ## Scope and stacks
 
 - One concern per PR, under ~400 changed lines. Bigger work: several PRs that each leave the app working. **Native change** (config plugin, `app.json`, `patches/`, `ios/`, `android/`, permissions) alone, with the dev-client or EAS build named. **Tooling bump** (test library major, package manager, CI) alone.
-- Stack at most **two**; the bottom PR is ready. The upper PR's base is the bottom branch; its Risk says "stacked on #N, merge #N first".
+- Stack at most **two**, and only on a bottom PR that is **ready**. Before you branch from an open PR's branch, run `gh pr view <N> --json isDraft --jq .isDraft`: `true` means no stacking yet, so branch from `develop` or wait, and tell the user which. The upper PR's base is the bottom branch; its Risk says "stacked on #N, merge #N first".
 - After the bottom PR merges: `git fetch origin && git merge origin/develop`, verify, `bash <skill>/scripts/pre-push.sh`, `git push`, then `gh pr edit <N> --base develop` if GitHub didn't retarget.
 
 ## Dependencies
@@ -88,3 +90,4 @@ Deadlines and explicit requests don't change these. Only the CTO (Pay) can grant
 | "The reviewer prefers one big PR" | Native changes and tooling bumps go alone. |
 | "I left Sok's other two comments alone, as you asked" | Deferring is fine; silence isn't. Draft the "why not" reply for the user to post today. |
 | "The cleanup only removed lines she already read" | Any new commit after their review needs their go-ahead again before Ready. |
+| "Stack sms on #42 now; #42 goes ready after review" | A draft bottom PR means no upper PR yet. Check `isDraft`; branch from `develop` or wait. |

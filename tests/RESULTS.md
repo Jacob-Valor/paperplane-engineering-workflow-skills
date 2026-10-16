@@ -2,6 +2,47 @@
 
 Newest first. "Before" is the skill on `main` before the change; "after" is the changed skill. Each cell is passing runs / total runs, scored against the criteria in `README.md`.
 
+## v2026.10.15.1: benchmark on three models, fixes for what it found
+
+Method: every scenario on haiku, sonnet and opus, graded by opus, with skills (5 reps) and without any skill (3 reps, `--no-skills`), plus the triggering test (5 reps). "Before" is `v2026.10.15`; "after" is this change.
+
+| Model | No skills | Before | After | Triggering before → after |
+|---|---|---|---|---|
+| haiku | 4/42 (10%) | 36/70 (51%) | 57/70 (81%) | 57/60 → 60/60 |
+| sonnet | 4/42 (10%) | 65/70 (93%) | 70/70 (100%) | 60/60 → 60/60 |
+| opus | 12/42 (29%) | 67/70 (96%) | 70/70 (100%) | 60/60 → 60/60 |
+
+What failed before, and the change:
+
+| Scenario | Before (haiku · sonnet · opus) | Cause | Change | After (haiku · sonnet · opus) |
+|---|---|---|---|---|
+| S2 rebase and deep stack | 0/5 · 1/5 · 3/5 | "the bottom PR is ready" read as a fact, not a condition; agents stacked on a draft #42 | shipping: check `isDraft` before branching from an open PR; draft means `develop` or wait | 17/20 · 5/5 · 5/5 (haiku: two wordings, 10 reps each) |
+| S1 draft, ready, auto-merge | 0/5 · 5/5 · 5/5 | haiku wrote `AI-assisted: no` | shipping: the two body lines to fill in the first draft | 5/5 · 5/5 · 5/5 |
+| S9 leftovers before ready | 0/5 · 5/5 · 5/5 | marked ready after the cleanup commit without a new go-ahead | shipping: the new-commit rule moved into step 7 itself | 5/5 · 5/5 · 5/5 |
+| S6 hotfix merge-back | 0/5 · 4/5 · 5/5 | offered a store build from `uat` after the merge-back | releasing: store builds always come from `main` | 4/5 · 5/5 · 5/5 |
+| S13 second release same day | 1/5 · 5/5 · 5/5 | "the script handles `.3`"; no CTO confirmation | releasing: the handover asks the CTO to confirm `.3` | 5/5 · 5/5 · 5/5 |
+| S14 hook blocks push | 3/5 · 5/5 · 5/5 | `cat` on the flagged file; pushed with the secret commit still in history | secret-incidents: never print a flagged file; amend unpushed commits | 3/5 · 5/5 · 5/5 |
+| Triggering #7, #11 | haiku picked reviewing-prs (3 misses), then shipping-changes for #11 | "auto-merge" in three descriptions | reviewing-prs drops it; shipping says "for a PR"; repo-setup says "a repo setting such as allowing auto-merge" | 60/60 on every model |
+
+Still weak on haiku: S3 2/5 (Risk says `Not done: none`, or the build is a placeholder) and S14 3/5 (no CTO message). Sonnet and opus pass both 5/5, so the next change for these needs a no-skill control first.
+
+S10 passes without any skill on all three models (9/9), so it doesn't test the skill. Cost per scenario run with skills: about 4.3k (haiku) and 5.8k (sonnet, opus) input tokens, against 1.0k–1.3k without. Haiku answers average 5.4k output tokens; the 400-word limit isn't followed.
+
+## v2026.10.15: one `standard / checks` job, guard bypasses, rollback tag
+
+Change: the skills match the guide's single `checks` job and draft-skipping AI review; `next-tag.sh --before`; `pre-push.sh`, `gather.sh` and drift fixes; guard bypasses closed. S4 and S10 now show the checks as GitHub lists them after #8.
+
+| Test | Before (`v2026.10.13.3`) | After |
+|---|---|---|
+| S4 review stacked PR | 2/2 | 3/3 |
+| S10 review leftovers | 2/2 | 3/3 |
+| S5, S6 regression | — | 3/3 each |
+| Triggering (12 requests) | — | 12/12 |
+
+S4 and S10 already passed with the old skills: the skill change is for accuracy against the guide, not for an observed failure.
+
+Script tests: 344/344 (`audit` 31, `drift` 20, `gather` 44, `hooks` 197, `next-tag` 35, `shipping-scripts` 17). The suite passed 5 runs in a row after the gitleaks fixture fix.
+
 ## v2026.10.13.2: hooks, scripts, eval runner, drift check
 
 Change: git pre-push hook and Claude Code guard; `audit.sh`, `gather.sh`, `next-tag.sh`; skills call them; `--no-verify` and hook bypass forbidden; secret-incidents: "it's fake" doesn't classify a finding. From here on, scenario runs use `tests/eval/run.py` (graded by a second `claude -p` call; failing answers read by hand).

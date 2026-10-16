@@ -134,6 +134,8 @@ else
   else report FAIL standard-workflow "does not call $want"; fi
   if printf '%s\n' "$wf" | grep -qw ready_for_review; then report PASS standard-ready_for_review "pull_request types include ready_for_review"
   else report WARN standard-ready_for_review "pull_request types lack ready_for_review; draft PRs marked ready skip CI (template change pending)"; fi
+  if printf '%s\n' "$wf" | grep -qE '^concurrency:' && printf '%s\n' "$wf" | grep -qE 'cancel-in-progress:[[:space:]]*true'; then report PASS standard-concurrency "cancels the previous run of the same PR"
+  else report WARN standard-concurrency "no 'concurrency' with cancel-in-progress: true; every push bills a full run (replace with the template)"; fi
   if [ "$app" = yes ]; then
     if printf '%s\n' "$wf" | grep -qE '^[[:space:]]*mobile:[[:space:]]*true([[:space:]]|$)'; then report PASS standard-mobile "mobile: true"
     else report FAIL standard-mobile "app repo, but standard.yml does not pass 'with: mobile: true'"; fi

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the same rules as the CI job `standard / PR body is complete`, before `gh pr ready`.
+# Runs the same rules as the "PR body is complete" step of the CI job `standard / checks`, before `gh pr ready`.
 # Usage: bash scripts/check-pr-body.sh [--mobile|--no-mobile] <body-file | --pr N>
 # Without a flag, the repo is treated as an app repo when .github/workflows/standard.yml sets `mobile: true`.
 # Exit codes: 0 complete · 1 incomplete · 2 usage error

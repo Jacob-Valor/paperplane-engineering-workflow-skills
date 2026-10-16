@@ -130,6 +130,10 @@ expect "failing checks do not abort" 0 bash "$G" 14 paperplanehq/demo
 has    "failing checks: listed" 'standard / lint.*fail'
 has    "failing checks: noted" 'gh pr checks exit 1'
 has    "failing checks: later sections still print" '^== Diff ==$'
+printf 'standard / checks\tpass\t40s\thttps://ci/4\nstandard / AI review (advisory)\tfail\t1m\thttps://ci/5\n' > "$F/checks-14.txt"
+expect "advisory-only red does not abort" 0 bash "$G" 14 paperplanehq/demo --no-diff
+has    "advisory-only red: says it never blocks" 'only the advisory AI review.*never blocks'
+lacks  "advisory-only red: not called unready" 'not ready to approve'
 has    "unreadable section reported" '^unavailable: HTTP 502'
 
 expect "repo from gh repo view" 0 bash "$G" 10 --no-diff

@@ -2,17 +2,19 @@
 """Run the agent scenarios in tests/scenarios and the triggering test with the `claude` CLI.
 
 Usage:
-  python3 tests/eval/run.py [--scenarios s1,s9|all] [--reps 3] [--skill-ref <git-ref>]
-                            [--model <name>] [--jobs 4] [--out tests/eval/out]
-                            [--trigger] [--dry-run]
+  python3 tests/eval/run.py [--scenarios s1,s9|all] [--reps 3] [--skill-ref <git-ref> | --no-skills]
+                            [--model <name>] [--judge-model <name>] [--jobs 4]
+                            [--out tests/eval/out] [--trigger] [--dry-run]
 
 Each scenario run is a written role-play: one `claude -p` call (no tools, no session saved)
 answers the scenario with the skill under test, and a second call grades the answer against
 the scenario's row of the pass-criteria table in tests/README.md. `--trigger` runs
 tests/triggering.md instead and compares each answer with the expected table.
 
-Skills come from the working tree, or from `git show <ref>:...` with --skill-ref.
-Scenarios, pass criteria and the triggering test always come from the working tree.
+Skills come from the working tree, or from `git show <ref>:...` with --skill-ref. --no-skills leaves
+them out (the baseline that shows what a skill adds). --judge-model grades with another model than
+the one answering (default: the same). Scenarios, pass criteria and the triggering test always come
+from the working tree.
 
 Exit codes: 0 every run passed · 1 at least one run failed · 2 usage error
 """
@@ -42,8 +44,9 @@ ROLE_PLAY = """\
 This is a written role-play. No commands are executed and you have no tools: answer in writing only.
 Answer with the exact commands you would run, in order, with a one-sentence reason for each choice, \
 and what you would say to the people involved. Stay under 400 words. \
-No meta commentary about the role-play, the test or these instructions.
+No meta commentary about the role-play, the test or these instructions."""
 
+SKILLS_INTRO = """\
 The skills below are installed and loaded. `<skill>` in a skill means that skill's directory, \
 `~/.agents/skills/<skill name>`."""
 
@@ -198,10 +201,12 @@ def skill_block(src, name):
     return "\n\n".join(parts)
 
 
-def scenario_prompt(src, scenario):
-    blocks = [ROLE_PLAY, skill_block(src, scenario["skill"])]
-    for extra in EXTRA_SKILLS.get(scenario["skill"], []):
-        blocks.append(skill_block(src, extra))
+def scenario_prompt(src, scenario, with_skills=True):
+    if not with_skills:
+        blocks = [ROLE_PLAY]
+    else:
+        blocks = [ROLE_PLAY + "\n\n" + SKILLS_INTRO, skill_block(src, scenario["skill"])]
+        blocks += [skill_block(src, extra) for extra in EXTRA_SKILLS.get(scenario["skill"], [])]
     blocks.append("=== Environment ===\n" + (SCENARIOS / "00-environment.md").read_text().rstrip())
     blocks.append("=== Scenario ===\n" + scenario["body"].rstrip())
     return "\n\n".join(blocks) + "\n"
@@ -305,10 +310,15 @@ def run_scenario(job, ctx):
     try:
         answer_env = call_claude(job["prompt"], SYSTEM_PROMPT, ctx["model"], ctx["workdir"])
         answer = answer_env.get("result", "")
+        usage = answer_env.get("usage") or {}
+        tokens = {"input_tokens": sum(usage.get(k) or 0 for k in
+                                      ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")),
+                  "output_tokens": usage.get("output_tokens") or 0,
+                  "answer_seconds": round((answer_env.get("duration_ms") or 0) / 1000, 1)}
         Path(f"{stem}.answer.md").write_text(answer)
         Path(f"{stem}.answer.json").write_text(json.dumps(answer_env, indent=2))
         jprompt = judge_prompt(scenario, ctx["criteria"][scenario["id"]], answer)
-        judge_env = call_claude(jprompt, JUDGE_SYSTEM_PROMPT, ctx["model"], ctx["workdir"])
+        judge_env = call_claude(jprompt, JUDGE_SYSTEM_PROMPT, ctx["judge_model"], ctx["workdir"])
         raw = judge_env.get("result", "")
         try:
             verdict = parse_judgement(raw)
@@ -316,8 +326,9 @@ def run_scenario(job, ctx):
             verdict = {"pass": False, "reason": f"{err}: {raw[:200]!r}"}
         cost = (answer_env.get("total_cost_usd") or 0) + (judge_env.get("total_cost_usd") or 0)
     except ClaudeError as err:
-        verdict, cost = {"pass": False, "reason": str(err)}, 0
+        verdict, cost, tokens = {"pass": False, "reason": str(err)}, 0, {}
         raw = ""
+    verdict.update(tokens)
     verdict.update({"scenario": scenario["id"], "rep": rep, "judge_raw": raw,
                     "seconds": round(time.time() - started, 1), "cost_usd": round(cost, 4)})
     Path(f"{stem}.judge.json").write_text(json.dumps(verdict, indent=2))
@@ -380,8 +391,8 @@ def summary_table(scenario_results, trigger_results, ctx, wall):
                         f"| {cell(reasons)} |")
     cost = sum(r["cost_usd"] for r in scenario_results + trigger_results)
     head = [f"# Eval summary {ctx['stamp']}", "",
-            f"- Skills: {ctx['source'].label()}",
-            f"- Model: {ctx['model'] or 'claude default'}",
+            f"- Skills: {'none (--no-skills)' if ctx['no_skills'] else ctx['source'].label()}",
+            f"- Model: {ctx['model'] or 'claude default'} · judge: {ctx['judge_model'] or 'claude default'}",
             f"- Wall time: {wall:.0f}s · reported cost: ${cost:.2f}",
             f"- Raw answers and judgements: {ctx['out']}", ""]
     return "\n".join(head + rows) + "\n", failures
@@ -395,7 +406,9 @@ def parse_args(argv):
                         help="comma-separated ids (s1,s9) or 'all' (default: all, unless --trigger)")
     parser.add_argument("--reps", type=int, default=3, help="runs per scenario (default 3)")
     parser.add_argument("--skill-ref", default=None, help="read skills from this git ref")
+    parser.add_argument("--no-skills", action="store_true", help="leave the skills out (baseline)")
     parser.add_argument("--model", default=None, help="claude model for answers and grading")
+    parser.add_argument("--judge-model", default=None, help="claude model for grading (default: --model)")
     parser.add_argument("--jobs", type=int, default=4, help="concurrent runs (default 4)")
     parser.add_argument("--out", default=str(TESTS / "eval" / "out"), help="output directory")
     parser.add_argument("--trigger", action="store_true", help="run the triggering test")
@@ -403,6 +416,8 @@ def parse_args(argv):
     args = parser.parse_args(argv)
     if args.reps < 1 or args.jobs < 1:
         parser.error("--reps and --jobs must be at least 1")
+    if args.no_skills and (args.skill_ref or args.trigger):
+        parser.error("--no-skills cannot be combined with --skill-ref or --trigger")
     return args
 
 
@@ -440,7 +455,7 @@ def main(argv):
 
     jobs = []
     for s in scenarios:
-        prompt = scenario_prompt(source, s)
+        prompt = scenario_prompt(source, s, with_skills=not args.no_skills)
         jobs += [{"kind": "scenario", "scenario": s, "rep": rep, "prompt": prompt}
                  for rep in range(1, args.reps + 1)]
     if args.trigger:
@@ -455,7 +470,7 @@ def main(argv):
             if key in printed:
                 continue
             printed.add(key)
-            print(f"########## {key} · skills from {source.label()} · {args.reps} rep(s) ##########")
+            print(f"########## {key} · skills from {'nowhere (--no-skills)' if args.no_skills else source.label()} · {args.reps} rep(s) ##########")
             print(job["prompt"])
             if job["kind"] == "scenario":
                 print(f"---------- {key} pass criteria (given to the judge) ----------")
@@ -478,11 +493,13 @@ def main(argv):
             continue
     stamp = out.name
     (out / "run.json").write_text(json.dumps(
-        {"argv": argv, "skill_ref": args.skill_ref, "model": args.model,
+        {"argv": argv, "skill_ref": args.skill_ref, "no_skills": args.no_skills, "model": args.model,
+         "judge_model": args.judge_model or args.model,
          "scenarios": [s["id"] for s in scenarios], "reps": args.reps, "trigger": args.trigger},
         indent=2))
     workdir = tempfile.mkdtemp(prefix="paperplane-eval-")
-    ctx = {"out": out, "model": args.model, "criteria": criteria, "expected": expected,
+    ctx = {"out": out, "model": args.model, "judge_model": args.judge_model or args.model,
+           "no_skills": args.no_skills, "criteria": criteria, "expected": expected,
            "workdir": workdir, "source": source, "stamp": stamp}
     calls = len(scenarios) * args.reps * 2 + (args.reps if args.trigger else 0)
     log(f"{len(jobs)} run(s), {calls} claude call(s), {args.jobs} at a time; output in {out}")

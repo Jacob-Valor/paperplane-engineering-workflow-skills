@@ -74,7 +74,7 @@ git switch -qc fix/other; echo e > e; git add e; git commit -qm "fix(o): e"; git
 expect "git hook: other branch push allowed" 0 git push -q origin fix/other
 if command -v gitleaks >/dev/null 2>&1; then
   git switch -qc fix/leak
-  printf 'aws_secret_access_key = %s\n' "$(head -c 30 /dev/urandom | base64)" > k.ts
+  printf 'aws_secret_access_key = %s\n' "$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 40)" > k.ts
   git add k.ts; git commit -qm leak; git switch -q feature/x
   expect "git hook: secret on another branch blocked" 1 git push -q origin fix/leak
 fi
@@ -103,6 +103,10 @@ git config core.hooksPath .githooks
 expect "git hook: core.hooksPath install" 0 bash "$H/install-git-hook.sh"
 check "git hook: written to core.hooksPath" grep -qx '# paperplane-pre-push' .githooks/pre-push
 expect "git hook: core.hooksPath push to develop blocked" 1 git push -q origin feature/x:develop
+git config core.hooksPath .husky/_
+expect "git hook: husky core.hooksPath refused" 1 bash "$H/install-git-hook.sh"
+check "git hook: husky refusal says to call it from .husky/pre-push" grep -q '\.husky/pre-push' /tmp/pp-test-out.$$
+check "git hook: husky hooks dir left alone" test ! -e .husky/_/pre-push
 git config --unset core.hooksPath
 expect "git hook: install outside a repo" 2 in_dir "$work" bash "$H/install-git-hook.sh"
 
@@ -110,7 +114,7 @@ expect "git hook: install outside a repo" 2 in_dir "$work" bash "$H/install-git-
 mkdir -p "$work/pnpm-repo" "$work/npm-repo"; : > "$work/pnpm-repo/pnpm-lock.yaml"
 hook_json() { # hook_json <command> <cwd>
   local c=$1
-  c=${c//\\/\\\\}; c=${c//\"/\\\"}
+  c=${c//\\/\\\\}; c=${c//\"/\\\"}; c=${c//$'\n'/\\n}
   printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"}' "$c" "$2"
 }
 guard() { hook_json "$1" "$2" | bash "$H/claude-guard.sh"; }
@@ -163,6 +167,31 @@ blocked=(
   'GIT_TRACE=1 git push --force'
   'bash -c "git push origin main"'
   'echo $(gh pr merge 5)'
+  'if true; then gh pr merge 5 --squash; fi'
+  '! git push --force'
+  '{ git push -f; }'
+  'for i in 1; do git add -A; done'
+  'out="$(gh pr merge 5 --squash)"'
+  'echo "`git push --force`"'
+  "gh api graphql -f query='mutation{mergePullRequest(input:{pullRequestId:\"x\"}){clientMutationId}}'"
+  "gh api graphql -f query='mutation{enablePullRequestAutoMerge(input:{pullRequestId:\"x\"}){clientMutationId}}'"
+  "gh api graphql -f query='mutation{addPullRequestReview(input:{pullRequestId:\"x\",event:APPROVE}){clientMutationId}}'"
+  "gh api graphql -f query='mutation{mergeBranch(input:{repositoryId:\"x\",base:\"develop\",head:\"feature/x\"}){clientMutationId}}'"
+  'gh api repos/o/r/pulls/5/reviews -f event=APPROVE'
+  'gh api repos/o/r/pulls/5/merge -f merge_method=squash'
+  'gh api repos/o/r/merges -f base=develop -f head=feature/x'
+  'git stage .'
+  'git stage -A'
+  'git push --force-w origin feature/x'
+  'git push --forc origin feature/x'
+  'git push --mirr'
+  'git push --no-verif'
+  'git add --al'
+  'git add --no-ignore-removal'
+  'git commit --no-verif -m x'
+  'git -c core.hooksPath=/dev/null commit -m x'
+  'git -c alias.p=push p origin develop'
+  $'cat <<EOF\nnot a command\nEOF\ngit push -f'
 )
 for c in "${blocked[@]}"; do expect "guard blocks: $c" 2 guard "$c" "$work/npm-repo"; done
 
@@ -188,6 +217,12 @@ allowed=(
   'npm install'
   'npx prettier --check .'
   'yarn'
+  'gh api repos/o/r/pulls/5/reviews'
+  'gh api repos/o/r/pulls/5/merge'
+  'git push origin uat-checklist-fix'
+  'git commit -uno -m x'
+  'git -c user.name=x commit -m y'
+  $'gh pr create --body-file - <<\'EOF\'\nDo not run `gh pr merge 5` or git push --force here\nEOF'
 )
 for c in "${allowed[@]}"; do expect "guard allows: $c" 0 guard "$c" "$work/npm-repo"; done
 
@@ -195,6 +230,9 @@ pnpm_blocked=('npm install' 'npm i lodash' 'npm ci' 'npm add zod' 'yarn' 'yarn a
 for c in "${pnpm_blocked[@]}"; do expect "guard blocks in pnpm repo: $c" 2 guard "$c" "$work/pnpm-repo"; done
 pnpm_allowed=('pnpm install' 'pnpm add zod' 'pnpm dlx prettier --write src' 'npm run build' 'npm --version' 'yarn test' 'bun run dev')
 for c in "${pnpm_allowed[@]}"; do expect "guard allows in pnpm repo: $c" 0 guard "$c" "$work/pnpm-repo"; done
+mkdir -p "$work/repo/packages/web"
+for c in 'npm install' 'npx prettier --write src'; do expect "guard blocks in a pnpm repo subdirectory: $c" 2 guard "$c" "$work/repo/packages/web"; done
+for c in 'npm i -g pnpm' 'npm install --global pnpm'; do expect "guard allows global install in pnpm repo: $c" 0 guard "$c" "$work/pnpm-repo"; done
 
 expect "guard ignores other tools" 0 bash -c "printf '%s' '{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"git push --force\"}}' | bash '$H/claude-guard.sh'"
 expect "guard reason on stderr" 0 bash -c "$(declare -f hook_json); hook_json 'gh pr merge 5' /tmp | bash '$H/claude-guard.sh' 2>&1 >/dev/null | grep -q '^paperplane guard: '"
@@ -218,6 +256,12 @@ expect "installer: --user --uninstall" 0 env HOME="$home" bash "$H/install-claud
 check "installer: uninstall removes the guard" test "$(count "$home/.claude/settings.json")" = 0
 check "installer: uninstall keeps other hooks" grep -q '"echo edit"' "$home/.claude/settings.json"
 check "installer: uninstall keeps other settings" grep -q '"model": "opus"' "$home/.claude/settings.json"
+
+lh="$work/link-home"; mkdir -p "$lh/.claude" "$work/dotfiles"; echo '{}' > "$work/dotfiles/settings.json"
+ln -s "$work/dotfiles/settings.json" "$lh/.claude/settings.json"
+expect "installer: --user with a symlinked settings file" 0 env HOME="$lh" bash "$H/install-claude-hook.sh" --user
+check "installer: symlink kept" test -L "$lh/.claude/settings.json"
+check "installer: symlink target updated" test "$(count "$work/dotfiles/settings.json")" = 1
 
 proj="$work/repo"; cd "$proj" || exit 1
 mkdir -p sub/dir .claude; printf '{"permissions": {"allow": ["Bash(pnpm test)"]}}\n' > .claude/settings.local.json

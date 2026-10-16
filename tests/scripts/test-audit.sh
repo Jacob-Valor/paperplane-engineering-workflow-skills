@@ -57,6 +57,9 @@ name: standard
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened, ready_for_review]
+concurrency:
+  group: standard-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   standard:
     uses: paperplanehq/paperplane-engineering/.github/workflows/standard-checks.yml@develop
@@ -130,6 +133,11 @@ compliant
 serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's/, ready_for_review//')"
 expect "audit: missing ready_for_review is a WARN only" 0 bash "$A" "$R"
 says "audit: names the ready_for_review warning" '^WARN  standard-ready_for_review '
+
+compliant
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | grep -vE '^concurrency:|^  (group|cancel-in-progress):')"
+expect "audit: missing concurrency is a WARN only" 0 bash "$A" "$R"
+says "audit: names the concurrency warning" '^WARN  standard-concurrency '
 
 compliant
 serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's/@develop/@main/')"

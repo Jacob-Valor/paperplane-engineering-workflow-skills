@@ -40,7 +40,8 @@ cmd=$(field tool_input command) || unreadable
 cwd=$(field cwd) || unreadable
 case "$cmd" in *git*|*gh*|*npm*|*npx*|*yarn*|*bun*) ;; *) exit 0 ;; esac
 pnpm_repo=0
-[ -f "${cwd:-$PWD}/pnpm-lock.yaml" ] && pnpm_repo=1
+top=$(git -C "${cwd:-$PWD}" rev-parse --show-toplevel 2>/dev/null) || top=${cwd:-$PWD}
+{ [ -f "${cwd:-$PWD}/pnpm-lock.yaml" ] || [ -f "$top/pnpm-lock.yaml" ]; } && pnpm_repo=1
 
 reason=""
 block() { [ -n "$reason" ] || reason=$1; }
@@ -55,13 +56,14 @@ R_MERGE="agents never merge PRs or turn on auto-merge; a human merges"
 R_APPROVE="agents never approve PRs; a human reviewer approves"
 R_SETTINGS="repo settings belong to the CTO; do not change them with gh repo edit or gh api PUT/PATCH/DELETE"
 R_PNPM="this repo uses pnpm (pnpm-lock.yaml); use pnpm install, pnpm add or pnpm dlx instead"
+R_GITCONFIG="git -c core.hooksPath/alias.* skips the repo's hooks or hides the real command; run plain git"
 
 check_refspec() {
   local r=$1 dst
   case "$r" in +*) block "$R_FORCE"; return ;; esac
   case "$r" in *:*) dst=${r##*:} ;; *) dst=$r ;; esac
   case "${dst#refs/heads/}" in develop|uat|main) block "$R_PROTECTED"; return ;; esac
-  case "${dst#refs/tags/}" in prod-*|uat-*) block "$R_TAGS" ;; esac
+  case "${dst#refs/tags/}" in prod-[0-9]*|uat-[0-9]*) block "$R_TAGS" ;; esac
 }
 
 check_push() {
@@ -71,10 +73,10 @@ check_push() {
     if [ "$dashdash" -eq 0 ]; then
       case "$a" in
         --) dashdash=1; continue ;;
-        --force|--force=*|--force-with-lease|--force-with-lease=*|--force-if-includes) block "$R_FORCE"; return ;;
-        --no-verify) block "$R_NOVERIFY"; return ;;
-        --tags) block "$R_TAGS"; return ;;
-        --all|--branches|--mirror) block "$R_ALLBRANCHES"; return ;;
+        --for|--forc|--force*) block "$R_FORCE"; return ;;
+        --no-veri*) block "$R_NOVERIFY"; return ;;
+        --ta*) block "$R_TAGS"; return ;;
+        --al|--all|--branches|--mi*) block "$R_ALLBRANCHES"; return ;;
         --repo=*) pos=1; continue ;;
         --repo) pos=1; [ $# -gt 0 ] && shift; continue ;;
         --push-option|--receive-pack|--exec) [ $# -gt 0 ] && shift; continue ;;
@@ -97,7 +99,7 @@ check_commit() {
     case "$a" in
       --) return ;;
       --all) block "$R_STAGEALL"; return ;;
-      --no-verify) block "$R_NOVERIFY"; return ;;
+      --no-veri*) block "$R_NOVERIFY"; return ;;
       --message|--file|--author|--date|--template|--reuse-message|--reedit-message|--fixup|--squash|--trailer|--cleanup)
         [ $# -gt 0 ] && shift ;;
       --*) ;;
@@ -108,6 +110,7 @@ check_commit() {
             a) block "$R_STAGEALL"; return ;;
             n) block "$R_NOVERIFY"; return ;;
             m|F|c|C|t) [ $((j+1)) -eq "${#f}" ] && [ $# -gt 0 ] && shift; break ;;
+            u|S) break ;;
           esac
           j=$((j+1))
         done ;;
@@ -121,7 +124,7 @@ check_add() {
     if [ "$dashdash" -eq 0 ]; then
       case "$a" in
         --) dashdash=1; continue ;;
-        --all|-A) block "$R_STAGEALL"; return ;;
+        --al|--all|--no-ignore-r*|-A) block "$R_STAGEALL"; return ;;
         --*) continue ;;
         -?*) case "$a" in *A*) block "$R_STAGEALL"; return ;; esac; continue ;;
       esac
@@ -133,7 +136,10 @@ check_add() {
 check_git() {
   while [ $# -gt 0 ]; do
     case "$1" in
-      -C|-c|--git-dir|--work-tree|--namespace|--config-env) shift; [ $# -gt 0 ] && shift ;;
+      -c|--config-env)
+        case "${2:-}" in [Cc][Oo][Rr][Ee].[Hh][Oo][Oo][Kk][Ss][Pp][Aa][Tt][Hh]*|[Aa][Ll][Ii][Aa][Ss].*) block "$R_GITCONFIG"; return ;; esac
+        shift; [ $# -gt 0 ] && shift ;;
+      -C|--git-dir|--work-tree|--namespace) shift; [ $# -gt 0 ] && shift ;;
       -*) shift ;;
       *) break ;;
     esac
@@ -143,7 +149,7 @@ check_git() {
   case "$sub" in
     push) check_push "$@" ;;
     commit) check_commit "$@" ;;
-    add) check_add "$@" ;;
+    add|stage) check_add "$@" ;;
   esac
 }
 
@@ -163,15 +169,25 @@ check_gh() {
         case "$a" in --approve|-a) block "$R_APPROVE"; return ;; esac
       done ;;
     api*)
-      local method=""
+      # Merges and approvals go through POST (REST or graphql), so match the
+      # endpoint or mutation; a REST merge endpoint without fields or -X is a GET.
+      local method="" fields=0 merge_ep=0 approve=0 review=0
       while [ $# -gt 0 ]; do
         a=$1; shift
         case "$a" in
           -X|--method) method=${1:-}; [ $# -gt 0 ] && shift ;;
           --method=*) method=${a#--method=} ;;
           -X?*) method=${a#-X} ;;
+          -f|-F|--field|--raw-field|--input|-f?*|-F?*|--field=*|--raw-field=*|--input=*) fields=1 ;;
         esac
+        case "$a" in *mergePullRequest*|*[Aa]utoMerge*|*mergeBranch*) block "$R_MERGE"; return ;; esac
+        case "$a" in */merge|*/merges) merge_ep=1 ;; esac
+        case "$a" in *APPROVE*) approve=1 ;; esac
+        case "$a" in */reviews*|*PullRequestReview*) review=1 ;; esac
       done
+      case "$method" in [Gg][Ee][Tt]) fields=0 ;; ?*) fields=1 ;; esac
+      [ "$merge_ep" -eq 1 ] && [ "$fields" -eq 1 ] && { block "$R_MERGE"; return; }
+      [ "$approve" -eq 1 ] && [ "$review" -eq 1 ] && { block "$R_APPROVE"; return; }
       case "$method" in
         [Pp][Uu][Tt]|[Pp][Aa][Tt][Cc][Hh]|[Dd][Ee][Ll][Ee][Tt][Ee]) block "$R_SETTINGS" ;;
       esac ;;
@@ -199,7 +215,7 @@ check_words() {
   set -- "${w[@]}"
   while [ $# -gt 0 ]; do
     case "$1" in
-      [A-Za-z_]*=*) shift ;;
+      [A-Za-z_]*=*|if|then|else|elif|fi|do|done|while|until|for|select|case|'esac'|'!'|'{'|'}') shift ;;
       sudo|env|command|builtin|nohup|time|exec|nice|xargs)
         shift
         while [ $# -gt 0 ]; do case "$1" in -*|[A-Za-z_]*=*) shift ;; *) break ;; esac; done ;;
@@ -226,6 +242,7 @@ check_words() {
       done ;;
   esac
   [ "$pnpm_repo" -eq 1 ] || return 0
+  case " $* " in *' -g '*|*' --global '*) return 0 ;; esac  # global installs (npm i -g pnpm)
   local sub
   sub=$(first_word "$@")
   case "$name" in
@@ -238,14 +255,27 @@ check_words() {
 
 # Split a command line into simple commands (on ; & | && || newlines, ( ) and
 # backticks) and words, honouring quotes and backslashes; check each command.
+# $(...) and `...` inside double quotes are checked on their own; heredoc bodies
+# are skipped.
 check_string() {
-  local s=$1 n=${#1} i=0 c q="" tok="" has=0
+  local s=$1 n=${#1} i=0 j d c q="" tok="" has=0 hd="" hds=0 line
   local -a seg=()
   while [ "$i" -lt "$n" ] && [ -z "$reason" ]; do
     c=${s:i:1}
     if [ -n "$q" ]; then
       if [ "$c" = "$q" ]; then
         q=""
+      elif [ "$q" = '"' ] && [ "$c" = '`' ]; then
+        j=$((i+1))
+        while [ "$j" -lt "$n" ] && [ "${s:j:1}" != '`' ]; do j=$((j+1)); done
+        check_string "${s:i+1:j-i-1}"; i=$j
+      elif [ "$q" = '"' ] && [ "${s:i:2}" = '$(' ]; then
+        j=$((i+2)); d=1
+        while [ "$j" -lt "$n" ]; do
+          case "${s:j:1}" in '(') d=$((d+1)) ;; ')') d=$((d-1)); [ "$d" -eq 0 ] && break ;; esac
+          j=$((j+1))
+        done
+        check_string "${s:i+2:j-i-2}"; i=$j
       elif [ "$q" = '"' ] && [ "$c" = '\' ]; then
         i=$((i+1)); c=${s:i:1}
         case "$c" in '"'|'\'|'$'|'`') tok+=$c ;; $'\n') ;; *) tok+="\\$c" ;; esac
@@ -265,6 +295,15 @@ check_string() {
             [ "$has" -eq 1 ] && seg+=("$tok"); tok=""; has=0
             [ "${#seg[@]}" -gt 0 ] && check_words "${seg[@]}"
             seg=()
+            if [ "$c" = $'\n' ] && [ -n "$hd" ]; then
+              while [ "$i" -lt "$n" ]; do
+                line=${s:i+1}; line=${line%%$'\n'*}
+                i=$((i+1+${#line}))
+                [ "$hds" -eq 1 ] && line=${line#"${line%%[!$'\t']*}"}
+                [ "$line" = "$hd" ] && break
+              done
+              hd=""
+            fi
           fi ;;
         '#')
           if [ "$has" -eq 0 ]; then
@@ -272,6 +311,22 @@ check_string() {
             continue
           fi
           tok+=$c ;;
+        '<')
+          # ponytail: one pending heredoc per line; a second one on the same line wins.
+          if [ "${s:i:2}" = '<<' ] && [ "${s:i+2:1}" != '<' ]; then
+            j=$((i+2)); hds=0; hd=""
+            [ "${s:j:1}" = - ] && { hds=1; j=$((j+1)); }
+            while [ "${s:j:1}" = ' ' ] || [ "${s:j:1}" = $'\t' ]; do j=$((j+1)); done
+            while [ "$j" -lt "$n" ]; do
+              case "${s:j:1}" in
+                ' '|$'\t'|$'\n'|';'|'&'|'|'|'('|')'|'<'|'>') break ;;
+                "'"|'"'|'\') ;;
+                *) hd+=${s:j:1} ;;
+              esac
+              j=$((j+1))
+            done
+          fi
+          tok+=$c; has=1 ;;
         *) tok+=$c; has=1 ;;
       esac
     fi

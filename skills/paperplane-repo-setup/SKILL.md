@@ -1,11 +1,11 @@
 ---
 name: paperplane-repo-setup
-description: Paper Plane's standard files, CI and repo settings, applied by copying the engineering templates. Use when creating or onboarding a repository in the paperplanehq GitHub org, or when a paperplanehq repo lacks the standard CI workflow, PR template, CODEOWNERS, AGENTS.md/CLAUDE.md, .env.example, pnpm, auto-merge, or the develop/uat/main branches — "set it up to our engineering standard", "migrate to pnpm".
+description: Paper Plane's standard files, CI and repo settings, applied by copying the engineering templates. Use when creating or onboarding a repository in the paperplanehq GitHub org, or when a paperplanehq repo lacks the standard CI workflow, PR template, CODEOWNERS, AGENTS.md/CLAUDE.md, .env.example, pnpm, the develop/uat/main branches, or a repo setting such as allowing auto-merge — "set it up to our engineering standard", "migrate to pnpm".
 license: Proprietary
 compatibility: Requires gh authenticated to the paperplanehq GitHub org; pnpm for migrations.
 metadata:
   author: paperplanehq
-  guide-version: "2026-10-13"
+  guide-version: "2026-10-15"
 ---
 
 # Bringing a repo up to the Paper Plane standard
@@ -20,9 +20,9 @@ The standard is applied by **copying** what `paperplanehq/paperplane-engineering
 bash <skill>/scripts/audit.sh paperplanehq/<repo>   # <skill> = the folder this SKILL.md is in; read-only
 ```
 
-One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; merge settings (squash and merge commit on, rebase off, delete branch on merge, auto-merge allowed); the `protect-develop-uat-main` ruleset; `AGENTS.md`, `CLAUDE.md`, `.env.example`, PR template, `pnpm-lock.yaml` and no other lockfile; CODEOWNERS with two owners per line; `standard.yml` calling `standard-checks.yml@develop`, with `ready_for_review` and, for app repos (`app.json`/`eas.json` found, or `--app`), `mobile: true`. Exit 1 means at least one FAIL. Every FAIL maps to a section below.
+One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; merge settings (squash and merge commit on, rebase off, delete branch on merge, auto-merge allowed); the `protect-develop-uat-main` ruleset; `AGENTS.md`, `CLAUDE.md`, `.env.example`, PR template, `pnpm-lock.yaml` and no other lockfile; CODEOWNERS with two owners per line; `standard.yml` calling `standard-checks.yml@develop`, with `ready_for_review`, `concurrency` and, for app repos (`app.json`/`eas.json` found, or `--app`), `mobile: true`. Exit 1 means at least one FAIL. Every FAIL maps to a section below.
 
-**Order** (the "pnpm only" check fails while another lockfile exists):
+**Order** (the `pnpm only` step of `standard / checks` fails while another lockfile exists):
 
 1. Settings and branches (§4, the CTO applies them)
 2. If the repo has a non-pnpm lockfile: the `chore/pnpm` PR (§3), merged
@@ -32,7 +32,7 @@ One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; 
 
 | Path | Content |
 |---|---|
-| `.github/workflows/standard.yml` | Exact copy of `templates/standard.yml`. It calls the reusable `standard-checks.yml@develop` (pnpm only, secret scan, PR title, PR body, PR size, AI review). **App repo** (TripBuddy app, Sanaam app, Studio app): uncomment `with: mobile: true`, or the iOS/Android lines are never checked. An existing file that differs from the template (missing `ready_for_review`, missing `mobile: true`) gets replaced. Never write your own copies of these checks. Repo build/test CI goes in a separate `ci.yml`. |
+| `.github/workflows/standard.yml` | Exact copy of `templates/standard.yml`. It calls the reusable `standard-checks.yml@develop`: one `standard / checks` job (pnpm only, PR title, PR body, PR size, secret scan) and `standard / AI review (advisory)`. **App repo** (TripBuddy app, Sanaam app, Studio app): uncomment `with: mobile: true`, or the iOS/Android lines are never checked. An existing file that differs from the template (missing `ready_for_review`, `concurrency` or `mobile: true`) gets replaced. Never write your own copies of these checks. Repo build/test CI goes in a separate `ci.yml`. |
 | `.github/pull_request_template.md` | Exact copy of `templates/pull_request_template.md` |
 | `.github/CODEOWNERS` | Copy of `templates/CODEOWNERS` with **two** owners on every line. Ask the CTO for the GitHub handles; never invent them. The PR stays draft until they are filled in |
 | `AGENTS.md` | Copy the sections "How we work as a team", "Rules for AI coding agents" and "Rules for everyone" from a migrated sibling (e.g. `tripbuddy-backend`). Adjust the product intro line. Then write "## This repo": stack, layers, and the exact commands under **Verify before opening a PR**. |
@@ -76,7 +76,7 @@ Then switch every `npm`/`yarn`/`npx` use in scripts, CI, Dockerfiles, EAS config
 
 ## Done when
 
-The setup PR, once ready, shows these checks green in `gh pr checks`: `pnpm only`, `secret scan (new commits)`, `PR title is type(scope) summary`, `PR body is complete`, `PR size`. `AI review (advisory)` has run (it never blocks). The audit in step 1 comes back clean.
+The setup PR, once ready, shows `standard / checks` green in `gh pr checks`, and `standard / AI review (advisory)` has run (it never blocks and skips drafts). The audit in step 1 comes back clean.
 
 ## Common mistakes
 

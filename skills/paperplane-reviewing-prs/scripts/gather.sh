@@ -66,7 +66,12 @@ else unavailable "$body"; fi
 section Checks
 checks=$(gh pr checks "$pr" -R "$repo" 2>&1); rc=$?
 printf '%s\n' "$checks"
-[ "$rc" -eq 0 ] || echo "(gh pr checks exit $rc: a check failed, is pending, or none ran; not ready to approve)"
+if [ "$rc" -ne 0 ]; then
+  blocking=$(printf '%s\n' "$checks" | awk -F'\t' '$2 ~ /^(fail|pending|cancel)$/ && $1 !~ /AI review \(advisory\)$/ {print $1}' | paste -sd, -)
+  if [ -n "$blocking" ]; then echo "(gh pr checks exit $rc: not ready to approve; failing or pending: $blocking)"
+  elif printf '%s\n' "$checks" | grep -q "$(printf '\t')"; then echo "(gh pr checks exit $rc: only the advisory AI review is red or pending; it never blocks)"
+  else echo "(gh pr checks exit $rc: no checks ran; not ready to approve)"; fi
+fi
 
 section "Files changed"
 if files=$(gh pr diff "$pr" -R "$repo" --name-only 2>&1); then printf '%s\n' "$files"
