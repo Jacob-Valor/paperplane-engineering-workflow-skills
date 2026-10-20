@@ -1,7 +1,7 @@
 # Paper Plane engineering workflow skills
 
 [![validate](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml/badge.svg)](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml)
-Version **v2026.10.15.5**, matching the guide of 2026-10-15 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
+Version **v2026.10.15.6**, matching the guide of 2026-10-15 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
 
 Agent skills that encode the [Paper Plane engineering guide](https://github.com/paperplanehq/paperplane-engineering)
 for every repository in the `paperplanehq` GitHub org. They follow the
@@ -85,6 +85,13 @@ and the Claude Code and omp guards block it. The committed guard is the one that
 the tool-run evals, small models often never opened a skill, and only the guard stopped them. On
 2026-10-16 none of the 13 `paperplanehq` repos had it (`audit.sh` FAIL `claude-guard` on all 13).
 Other agents (Codex, Cursor) get only the git pre-push hook and the server-side ruleset.
+
+To put the guard into many team repos at once (write access needed; dry run by default):
+
+```bash
+bash <skills>/paperplane-repo-setup/scripts/rollout-guard.sh paperplanehq/tripbuddy-backend paperplanehq/tripbuddy-app
+bash <skills>/paperplane-repo-setup/scripts/rollout-guard.sh --apply paperplanehq/tripbuddy-backend   # draft PR into develop
+```
 
 ## Engineering workflow
 
