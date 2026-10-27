@@ -134,7 +134,7 @@ says "401 is reported as a rejected token" '^FAIL +access .*(401|rejected)'
 expect "provided token, 401: fails without DRIFT_ALLOW_SKIP" 2 env GH_TOKEN=expired bash "$C"
 printf 'gh: Resource not accessible by personal access token (HTTP 403)\n' > "$FAKE_GH/noaccess"
 expect "provided token, 403: fails even with DRIFT_ALLOW_SKIP=1" 2 env GH_TOKEN=revoked DRIFT_ALLOW_SKIP=1 bash "$C"
-expect "empty GH_TOKEN (secret not provided), 403: skip ok" 0 env GH_TOKEN= DRIFT_ALLOW_SKIP=1 bash "$C"
+expect "empty GH_TOKEN (secret not provided), 403: skip ok" 0 env DRIFT_ALLOW_SKIP=1 GH_TOKEN= bash "$C"
 says "secret not provided prints SKIP" '^SKIP +access'
 printf 'gh: Bad credentials (HTTP 401)\n' > "$FAKE_GH/noaccess"
 expect "no token at all, 401 (stale gh login): skip ok" 0 env DRIFT_ALLOW_SKIP=1 bash "$C"

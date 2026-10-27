@@ -15,18 +15,19 @@ jobs:
     name: skills are valid and scripts work
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7 # pin to SHA via dependabot
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # the secret scan below reads every commit
 
-      - uses: astral-sh/setup-uv@v7 # pin to SHA via dependabot
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
 
-      - uses: oven-sh/setup-bun@v2 # pin to SHA via dependabot; runs the omp adapter tests in test-hooks.sh
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2 runs the omp adapter tests in test-hooks.sh
 
       - name: Validate every skill against the Agent Skills spec
-        # Not pinned: the repo's docs name no tag or commit of agentskills/agentskills to pin to, and
-        # a SHA cannot be looked up offline. Pin it here once someone picks a known-good commit.
+        # Pinned to a commit of agentskills/agentskills (main on 2026-08-09) so CI cannot change under us.
         run: |
           for s in skills/*/SKILL.md; do
-            uvx --from "git+https://github.com/agentskills/agentskills#subdirectory=skills-ref" skills-ref validate "$(dirname "$s")"
+            uvx --from "git+https://github.com/agentskills/agentskills@69ef37e9424c0a7ea9dd2293b559e43ec8176379#subdirectory=skills-ref" skills-ref validate "$(dirname "$s")"
           done
 
       - name: Lint scripts and hooks
@@ -53,10 +54,15 @@ jobs:
           dir=$(mktemp -d)
           base="https://github.com/gitleaks/gitleaks/releases/download/v${V}"
           curl -sSfL -o "$dir/gitleaks_${V}_linux_x64.tar.gz" "$base/gitleaks_${V}_linux_x64.tar.gz"
-          curl -sSfL -o "$dir/gitleaks_${V}_checksums.txt" "$base/gitleaks_${V}_checksums.txt"
-          (cd "$dir" && sha256sum -c --ignore-missing "gitleaks_${V}_checksums.txt")
+          # the expected hash is pinned here: a checksums file from the same release page proves nothing
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $dir/gitleaks_${V}_linux_x64.tar.gz" | sha256sum -c -
           sudo tar -xzf "$dir/gitleaks_${V}_linux_x64.tar.gz" -C /usr/local/bin gitleaks
           gitleaks version
+
+      - name: Secret scan of this repo (working tree and every commit)
+        run: |
+          gitleaks dir --no-banner --redact .
+          gitleaks git --no-banner --redact .
 
       - name: Test skill scripts
         run: |
@@ -73,7 +79,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 20 # a hung test must fail the job, not run for hours
     steps:
-      - uses: actions/checkout@v7 # pin to SHA via dependabot
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Syntax-check every script with the system bash
         run: |
