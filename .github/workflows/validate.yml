@@ -15,7 +15,7 @@ jobs:
     name: skills are valid and scripts work
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4 # pin to SHA via dependabot
+      - uses: actions/checkout@v7 # pin to SHA via dependabot
 
       - uses: astral-sh/setup-uv@v6 # pin to SHA via dependabot
 
@@ -73,7 +73,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 20 # a hung test must fail the job, not run for hours
     steps:
-      - uses: actions/checkout@v4 # pin to SHA via dependabot
+      - uses: actions/checkout@v7 # pin to SHA via dependabot
 
       - name: Syntax-check every script with the system bash
         run: |

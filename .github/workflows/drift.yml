@@ -14,7 +14,7 @@ jobs:
     name: skills match the engineering guide
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4 # pin to SHA via dependabot
+      - uses: actions/checkout@v7 # pin to SHA via dependabot
       - name: Explain the token
         run: |
           echo "Drift check reads paperplanehq/paperplane-engineering with the ORG_READ_TOKEN secret: a fine-grained PAT with read-only Contents on paperplanehq/paperplane-engineering. When the secret is not provided at all (forks), pull requests skip the check; an expired or revoked token fails every run, pull requests included. Failed scheduled runs open or update an issue labelled drift." >> "$GITHUB_STEP_SUMMARY"
