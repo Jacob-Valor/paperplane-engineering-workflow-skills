@@ -54,8 +54,8 @@ jobs:
           dir=$(mktemp -d)
           base="https://github.com/gitleaks/gitleaks/releases/download/v${V}"
           curl -sSfL -o "$dir/gitleaks_${V}_linux_x64.tar.gz" "$base/gitleaks_${V}_linux_x64.tar.gz"
-          curl -sSfL -o "$dir/gitleaks_${V}_checksums.txt" "$base/gitleaks_${V}_checksums.txt"
-          (cd "$dir" && sha256sum -c --ignore-missing "gitleaks_${V}_checksums.txt")
+          # the expected hash is pinned here: a checksums file from the same release page proves nothing
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $dir/gitleaks_${V}_linux_x64.tar.gz" | sha256sum -c -
           sudo tar -xzf "$dir/gitleaks_${V}_linux_x64.tar.gz" -C /usr/local/bin gitleaks
           gitleaks version
 

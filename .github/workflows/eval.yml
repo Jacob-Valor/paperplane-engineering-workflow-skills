@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # The API key is set only on the steps that need it (this one, the triggering test and the
-      # scenarios), never at job level, so the install steps below (curl | bash, npm, the gitleaks
+      # scenarios), never at job level, so the install steps below (npm, the gitleaks
       # download) cannot read it.
 
       - name: Check the API key
@@ -69,19 +69,20 @@ jobs:
       - name: Install the claude CLI
         if: steps.key.outputs.skip != '1'
         run: |
-          curl -fsSL https://claude.ai/install.sh | bash
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # pinned: no `curl | bash`; 2.1.308 is the version these evals were run with
+          npm install -g @anthropic-ai/claude-code@2.1.308
+          claude --version
 
       - name: Install pnpm and gitleaks (sandbox)
         if: steps.key.outputs.skip != '1' && github.event_name != 'pull_request'
         run: |
-          npm install -g pnpm@9
+          npm install -g pnpm@9.15.9
           V=8.30.1
           dir=$(mktemp -d)
           base="https://github.com/gitleaks/gitleaks/releases/download/v${V}"
           curl -sSfL -o "$dir/gitleaks_${V}_linux_x64.tar.gz" "$base/gitleaks_${V}_linux_x64.tar.gz"
-          curl -sSfL -o "$dir/gitleaks_${V}_checksums.txt" "$base/gitleaks_${V}_checksums.txt"
-          (cd "$dir" && sha256sum -c --ignore-missing "gitleaks_${V}_checksums.txt")
+          # the expected hash is pinned here: a checksums file from the same release page proves nothing
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $dir/gitleaks_${V}_linux_x64.tar.gz" | sha256sum -c -
           sudo tar -xzf "$dir/gitleaks_${V}_linux_x64.tar.gz" -C /usr/local/bin gitleaks
           gitleaks version
 

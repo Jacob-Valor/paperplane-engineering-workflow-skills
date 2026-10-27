@@ -8,6 +8,8 @@ Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Te
 - `pre-push.sh` wrote gitleaks output to `/tmp/pre-push-gitleaks.$$`, a guessable path that another local user could pre-create as a symlink to make the hook overwrite a file of the person pushing. It now uses `mktemp`. File names in the "second lockfile" and ".env file" messages are no longer expanded unquoted (a name containing `*` was globbed against the working directory).
 - CI: the repo had no secret scan of its own (gitleaks was only installed for the tests). `validate` now scans the working tree and every commit. Its checkout fetches full history.
 - CI: `actions/checkout`, `upload-artifact`, `setup-uv` and `setup-bun` are pinned to commit SHAs, and `skills-ref` is installed from a pinned commit of agentskills/agentskills instead of the default branch. Dependabot keeps the pins current through the `# vN` comments.
+- CI: the eval job no longer runs `curl https://claude.ai/install.sh | bash`; it installs `@anthropic-ai/claude-code@2.1.308` (the version the evals were run with) from npm, and pnpm is pinned to 9.15.9. The gitleaks download is checked against a SHA-256 kept in the workflow, not a checksums file from the same release page. Not yet run in CI (the eval job needs `ANTHROPIC_API_KEY`).
+- GitHub settings (not in the diff): secret scanning, push protection, Dependabot alerts and Dependabot security updates were all off on this public repo; now on.
 - Test fixture: `tests/scripts/test-drift.sh` line 137 (`GH_TOKEN= DRIFT_ALLOW_SKIP=1`, an empty token) was reported as a key. Reordered the arguments. The same finding in history (commit 9bca117, no credential ever present) is covered by one pinned `.gitleaksignore` entry.
 
 ## v2026.10.15.10
