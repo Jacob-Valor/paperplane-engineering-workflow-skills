@@ -49,6 +49,7 @@ serve() { # serve <api path> <content>; content "" deletes the response (404)
   if [ -n "$2" ]; then printf '%s\n' "$2" > "$f"; else rm -f "$f"; fi
 }
 names() { local n s=""; for n in "$@"; do s="$s${s:+,}{\"name\":\"$n\"}"; done; echo "[$s]"; }
+rulesets() { local n s=""; for n in "$@"; do s="$s${s:+,}{\"name\":\"${n%%:*}\",\"enforcement\":\"${n#*:}\"}"; done; echo "[$s]"; } # rulesets name:enforcement...
 settings() { # settings <auto_merge>
   echo "{\"default_branch\":\"develop\",\"allow_squash_merge\":true,\"allow_merge_commit\":true,\"allow_rebase_merge\":false,\"delete_branch_on_merge\":true,\"allow_auto_merge\":$1}"
 }
@@ -74,7 +75,7 @@ compliant() {
   rm -f "$FAKE_GH"/*
   serve "repos/$R" "$(settings true)"
   serve "repos/$R/branches?per_page=100" "$(names develop uat main feature/x)"
-  serve "repos/$R/rulesets" "$(names protect-develop-uat-main release-tags-owner-only)"
+  serve "repos/$R/rulesets" "$(rulesets protect-develop-uat-main:active release-tags-owner-only:active)"
   serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}")"
   serve "repos/$R/contents/.github?ref=develop" "$(names CODEOWNERS pull_request_template.md workflows)"
   serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '# owners\n* @paperplanehq/leads @alice\n/ios/ @bob @carol # mobile\n')"
@@ -179,6 +180,65 @@ compliant
 serve "repos/$R/contents/AGENTS.md?ref=develop" "$(printf '# AGENTS.md\nSee paperplanehq/paperplane-engineering.\n')"
 expect "audit: AGENTS.md without the skills is a WARN only" 0 bash "$A" "$R"
 says "audit: names the AGENTS.md skills warning" '^WARN  agents-skills '
+
+compliant
+serve "repos/$R/rulesets" "$(rulesets protect-develop-uat-main:disabled release-tags-owner-only:active)"
+expect "audit: disabled ruleset fails" 1 bash "$A" "$R"
+says "audit: says the ruleset is not active" '^FAIL  ruleset .*disabled'
+serve "repos/$R/rulesets" "$(rulesets protect-develop-uat-main:evaluate)"
+expect "audit: evaluate-only ruleset fails" 1 bash "$A" "$R"
+
+compliant
+serve "repos/$R/contents/.github?ref=develop" "$(names pull_request_template.md workflows)"
+serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}" CODEOWNERS)"
+serve "repos/$R/contents/CODEOWNERS?ref=develop" "* @a @b"
+expect "audit: root CODEOWNERS is accepted" 0 bash "$A" "$R"
+says "audit: reports the root CODEOWNERS" '^PASS  codeowners .*CODEOWNERS'
+serve "repos/$R/contents/CODEOWNERS?ref=develop" "* @a"
+expect "audit: thin root CODEOWNERS fails" 1 bash "$A" "$R"
+serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}" docs)"
+serve "repos/$R/contents/CODEOWNERS?ref=develop" ""
+serve "repos/$R/contents/docs?ref=develop" "$(names CODEOWNERS)"
+serve "repos/$R/contents/docs/CODEOWNERS?ref=develop" "* @a @b"
+expect "audit: docs/CODEOWNERS is accepted" 0 bash "$A" "$R"
+says "audit: reports docs/CODEOWNERS" '^PASS  codeowners .*docs/CODEOWNERS'
+
+compliant
+big=$(printf 'develop\nuat\nmain\n'; seq 1 20000 | sed s/^/branch-/)
+BIGJSON=$(printf '%s\n' "$big" | jq -R . | jq -s 'map({name:.})')
+serve "repos/$R/branches?per_page=100" "$BIGJSON"
+expect "audit: 20000 branches (>64KB) do not cause false FAILs" 0 bash "$A" "$R"
+says "audit: big branch list finds develop" '^PASS  branch-develop '
+
+compliant
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed -e 's/, ready_for_review//' -e 's/^name: standard$/name: standard # ready_for_review/')"
+expect "audit: ready_for_review only in a comment is a WARN" 0 bash "$A" "$R"
+says "audit: comment does not satisfy ready_for_review" '^WARN  standard-ready_for_review '
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed -e 's/, ready_for_review//' -e 's/^    uses:/    if: github.event.action != '"'"'ready_for_review'"'"'\n    uses:/')"
+expect "audit: ready_for_review only in a job if: is a WARN" 0 bash "$A" "$R"
+says "audit: job if: does not satisfy ready_for_review" '^WARN  standard-ready_for_review '
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed -e 's/types: \[.*\]/types:\n      - opened\n      - ready_for_review/')"
+expect "audit: block-list types with ready_for_review" 0 bash "$A" "$R"
+says "audit: block-list types pass" '^PASS  standard-ready_for_review '
+
+compliant
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed -e 's/^concurrency:/# concurrency:/')"
+expect "audit: commented-out concurrency is a WARN" 0 bash "$A" "$R"
+says "audit: commented concurrency warns" '^WARN  standard-concurrency '
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | grep -vE '^concurrency:|^  (group|cancel-in-progress):' | sed 's/^jobs:/jobs:\n  other:\n    concurrency:\n      group: x\n      cancel-in-progress: true/')"
+expect "audit: job-level concurrency is not the top-level one" 0 bash "$A" "$R"
+says "audit: job-level concurrency warns" '^WARN  standard-concurrency '
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's/cancel-in-progress: true/cancel-in-progress: false # true/')"
+expect "audit: cancel-in-progress false with true in a comment" 0 bash "$A" "$R"
+says "audit: cancel false warns" '^WARN  standard-concurrency '
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed -e '/^concurrency:/,/cancel-in-progress/d' -e 's/^jobs:/concurrency: { group: g, cancel-in-progress: true }\njobs:/')"
+expect "audit: inline concurrency mapping passes" 0 bash "$A" "$R"
+says "audit: inline concurrency passes" '^PASS  standard-concurrency '
+
+compliant
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's/^  group: .*/  group: "a #b"/')"
+expect "audit: # inside quotes is not a comment" 0 bash "$A" "$R"
+says "audit: concurrency still passes after a quoted #" '^PASS  standard-concurrency '
 
 compliant
 serve "repos/$R" ""

@@ -60,8 +60,10 @@ tag "2026-10-09T08:00:00" uat-2026.10.09
 expect "uat prefix: base exists" 0 nt --prefix uat --date 2026-10-09
 same   "uat prefix: .2" "$out" "uat-2026.10.09.2"
 
+today=$(date +%Y.%m.%d)
 expect "default date is today" 0 nt
-same   "default date: name" "$out" "prod-$(date +%Y.%m.%d)"
+tomorrow_ok=$(date +%Y.%m.%d)
+if [ "$today" = "$tomorrow_ok" ]; then same "default date: name" "$out" "prod-$today"; else pass=$((pass+1)); echo "ok   default date: skipped, midnight passed"; fi
 
 expect "--previous: newest prod tag by tag date" 0 nt --previous
 same   "--previous: name" "$out" "prod-2026.10.10"
@@ -69,6 +71,15 @@ expect "--previous ignores uat tags" 0 nt --previous --prefix uat
 same   "--previous uat: name" "$out" "uat-2026.10.09"
 expect "--previous --before: the tag before the bad release" 0 nt --previous --before prod-2026.10.10
 same   "--previous --before: name" "$out" "prod-2026.10.09.10"
+# Same creatordate: the higher version suffix wins (prod-X.2 over prod-X, prod-X.10 over prod-X.9).
+tag "2026-11-01T10:00:00" prod-2026.11.01
+tag "2026-11-01T10:00:00" prod-2026.11.01.2
+tag "2026-11-01T10:00:00" prod-2026.11.01.10
+tag "2026-11-01T10:00:00" prod-2026.11.01.9
+expect "--previous tie on tag date: highest suffix" 0 nt --previous
+same   "--previous tie: name" "$out" "prod-2026.11.01.10"
+expect "--previous --before in a tie: next lower suffix" 0 nt --previous --before prod-2026.11.01.10
+same   "--previous --before tie: name" "$out" "prod-2026.11.01.9"
 expect "--before an unknown tag is a usage error" 2 nt --previous --before prod-2026.01.01
 expect "--before without --previous is a usage error" 2 nt --before prod-2026.10.10
 
@@ -81,6 +92,17 @@ expect "fetch failure stops (unreachable origin)" 2 bash "$S/next-tag.sh" --date
 git remote remove origin
 expect "usage: bad prefix" 2 nt --prefix v
 expect "usage: bad date" 2 nt --date 2026.10.09
+expect "usage: --date 2026-02-31 is not a day" 2 nt --date 2026-02-31
+expect "usage: --date 2026-04-31 is not a day" 2 nt --date 2026-04-31
+expect "usage: --date 2025-02-29 (not a leap year)" 2 nt --date 2025-02-29
+expect "usage: --date 1900-02-29 (century, not leap)" 2 nt --date 1900-02-29
+expect "--date 2028-02-29 (leap year)" 0 nt --date 2028-02-29
+same   "leap day name" "$out" "prod-2028.02.29"
+expect "--date 2000-02-29 (400-year leap)" 0 nt --date 2000-02-29
+expect "--date 2026-12-31" 0 nt --date 2026-12-31
+expect "usage: --date without a value" 2 nt --date
+expect "usage: --date with an empty value" 2 nt --date ""
+expect "usage: --prefix without a value" 2 nt --prefix
 expect "usage: unknown flag" 2 nt --push
 expect "help" 0 nt --help
 cd "$work" || exit 1

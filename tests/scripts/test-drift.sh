@@ -26,7 +26,7 @@ cat > bin/gh <<'EOF'
 [ "$1" = api ] || exit 1
 ep=$2; shift 2; jqf=""
 while [ $# -gt 0 ]; do case $1 in --jq) jqf=$2; shift 2 ;; *) shift ;; esac; done
-[ -e "$FAKE_GH/noaccess" ] && { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+[ -e "$FAKE_GH/noaccess" ] && { if [ -s "$FAKE_GH/noaccess" ]; then cat "$FAKE_GH/noaccess"; else echo "gh: Not Found (HTTP 404)"; fi >&2; exit 1; }
 case $ep in
   repos/paperplanehq/paperplane-engineering) out='{"full_name":"paperplanehq/paperplane-engineering"}' ;;
   */contents/*) p=${ep#*/contents/}; p=${p%%\?*}; out=$(cat "$FAKE_GH/files/$p" 2>/dev/null) || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; } ;;
@@ -37,7 +37,7 @@ if [ -n "$jqf" ]; then printf '%s\n' "$out" | jq -r "$jqf"; else printf '%s\n' "
 EOF
 chmod +x bin/gh
 export PATH="$work/bin:$PATH" FAKE_GH="$work/gh" SKILLS_DIR="$work/skills"
-unset DRIFT_ALLOW_SKIP
+unset DRIFT_ALLOW_SKIP GH_TOKEN
 
 setup() { # fresh skills copy and a guide that matches it
   rm -rf "$work/skills" "$FAKE_GH"
@@ -121,10 +121,25 @@ echo 'Trigger on ready_for_review too.' >> "$SKILLS_DIR/paperplane-repo-setup/SK
 expect "ready_for_review explained by repo-setup passes" 0 bash "$C"
 
 setup
-touch "$FAKE_GH/noaccess"
+: > "$FAKE_GH/noaccess"
 expect "no access fails without DRIFT_ALLOW_SKIP" 2 bash "$C"
 says "no access prints SKIP" '^SKIP +access .*HTTP 404'
 expect "no access passes with DRIFT_ALLOW_SKIP=1" 0 env DRIFT_ALLOW_SKIP=1 bash "$C"
+
+# A token that was provided but is refused is a failure, never a skip: an expired secret must not turn the PR check green.
+setup
+printf 'gh: Bad credentials (HTTP 401)\n' > "$FAKE_GH/noaccess"
+expect "provided token, 401: fails even with DRIFT_ALLOW_SKIP=1" 2 env GH_TOKEN=expired DRIFT_ALLOW_SKIP=1 bash "$C"
+says "401 is reported as a rejected token" '^FAIL +access .*(401|rejected)'
+expect "provided token, 401: fails without DRIFT_ALLOW_SKIP" 2 env GH_TOKEN=expired bash "$C"
+printf 'gh: Resource not accessible by personal access token (HTTP 403)\n' > "$FAKE_GH/noaccess"
+expect "provided token, 403: fails even with DRIFT_ALLOW_SKIP=1" 2 env GH_TOKEN=revoked DRIFT_ALLOW_SKIP=1 bash "$C"
+expect "empty GH_TOKEN (secret not provided), 403: skip ok" 0 env GH_TOKEN= DRIFT_ALLOW_SKIP=1 bash "$C"
+says "secret not provided prints SKIP" '^SKIP +access'
+printf 'gh: Bad credentials (HTTP 401)\n' > "$FAKE_GH/noaccess"
+expect "no token at all, 401 (stale gh login): skip ok" 0 env DRIFT_ALLOW_SKIP=1 bash "$C"
+: > "$FAKE_GH/noaccess"
+expect "provided token, 404 still follows DRIFT_ALLOW_SKIP" 0 env GH_TOKEN=x DRIFT_ALLOW_SKIP=1 bash "$C"
 
 expect "usage error" 2 bash "$C" --bogus
 

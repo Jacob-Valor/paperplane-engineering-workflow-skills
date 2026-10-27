@@ -4,13 +4,14 @@
 # Usage: bash tests/drift/check.sh [-h|--help]
 # Env:   SKILLS_DIR        skills directory (default: skills)
 #        GH_TOKEN          token with read-only Contents on the guide repo (or a `gh auth login`)
-#        DRIFT_ALLOW_SKIP  1 = exit 0 when the guide repo cannot be read
-# Output: one line per check: `OK|DRIFT|SKIP  <check>  <detail>`
+#        DRIFT_ALLOW_SKIP  1 = exit 0 when the guide repo cannot be read, except that a GH_TOKEN
+#                          which is set but refused (HTTP 401/403) is a FAIL: fix or rotate the secret
+# Output: one line per check: `OK|DRIFT|SKIP|FAIL  <check>  <detail>`
 # Exit codes: 0 no drift · 1 drift found: update the skills (and their guide-version) ·
 #             2 guide repo unreadable (without DRIFT_ALLOW_SKIP=1) or usage error
 set -uo pipefail
 
-usage() { sed -n '2,10s/^# \{0,1\}//p' "$0"; }
+usage() { sed -n '2,12s/^# \{0,1\}//p' "$0"; }
 case "${1:-}" in
   -h|--help) usage; exit 0 ;;
   "") ;;
@@ -34,8 +35,14 @@ skip_access() {
   exit 2
 }
 command -v gh >/dev/null 2>&1 || skip_access "gh is not installed"
-err=$(gh api "repos/$repo" --jq .full_name 2>&1 >/dev/null) ||
+if ! err=$(gh api "repos/$repo" --jq .full_name 2>&1 >/dev/null); then
+  # "Secret not provided" (GH_TOKEN empty or unset) may skip; "provided but refused" must not.
+  if [ -n "${GH_TOKEN:-}" ] && printf '%s' "$err" | grep -qE 'HTTP (401|403)|Bad credentials'; then
+    say FAIL access "GH_TOKEN was provided but $repo refused it: $(printf '%s' "$err" | head -1); the token is expired, revoked or lacks read-only Contents. Rotate the secret"
+    exit 2
+  fi
   skip_access "cannot read $repo: $(printf '%s' "$err" | head -1)"
+fi
 
 raw() { gh api "repos/$repo/contents/$1?ref=$ref" -H 'Accept: application/vnd.github.raw'; }
 

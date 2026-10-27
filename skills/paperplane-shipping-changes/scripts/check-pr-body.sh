@@ -27,23 +27,33 @@ else
   echo "usage: bash scripts/check-pr-body.sh [--mobile|--no-mobile] <body-file | --pr N>"; exit 2
 fi
 
+# Drop CRs and every <!-- ... --> comment, single- or multi-line, each one up to its own first -->.
+BODY=$(printf '%s\n' "$BODY" | awk '{
+  sub(/\r$/, ""); line = $0; out = ""
+  while (1) {
+    if (inc) { i = index(line, "-->"); if (!i) { line = ""; break }; line = substr(line, i + 3); inc = 0 }
+    i = index(line, "<!--"); if (!i) { out = out line; break }
+    out = out substr(line, 1, i - 1); line = substr(line, i + 4); inc = 1
+  }
+  print out }')
+
 if [ -z "$mobile" ]; then
   mobile=false
   grep -Eq '^[[:space:]]*mobile:[[:space:]]*true' .github/workflows/standard.yml 2>/dev/null && mobile=true
 fi
 
 fail=0
-section() { printf '%s' "$BODY" | awk -v h="## $1" 'index($0,h)==1{f=1;next} /^## /{f=0} f' | sed -e 's/<!--.*-->//g' -e '/^[[:space:]]*$/d'; }
+section() { printf '%s' "$BODY" | awk -v h="## $1" 'index($0,h)==1{f=1;next} /^## /{f=0} f' | sed -e '/^[[:space:]]*$/d'; }
 
 [ -n "$(section 'How I verified it' | grep -vE '^- (Commands|iOS|Android):[[:space:]]*$')" ] \
   || { echo "MISSING: 'How I verified it' is empty"; fail=1; }
 [ -n "$(section 'Risk')" ] || { echo "MISSING: 'Risk' is empty"; fail=1; }
-printf '%s' "$BODY" | grep -Eq '^AI-assisted: *(yes|no)' && ! printf '%s' "$BODY" | grep -Eq '^AI-assisted: *yes */ *no' \
+printf '%s' "$BODY" | grep -Eq '^AI-assisted: *(yes|no)([[:space:]]|$)' && ! printf '%s' "$BODY" | grep -Eq '^AI-assisted: *(yes */ *no|no */ *yes)' \
   || { echo "MISSING: 'AI-assisted: yes' or 'AI-assisted: no' line (the template placeholder does not count)"; fail=1; }
 
 if [ "$mobile" = "true" ]; then
   for p in iOS Android; do
-    line=$(printf '%s' "$BODY" | grep -E "^- $p:" | head -1 | sed -e 's/<!--.*-->//' -e "s/^- $p:[[:space:]]*//")
+    line=$(printf '%s' "$BODY" | grep -E "^- $p:" | head -1 | sed -e "s/^- $p:[[:space:]]*//" -e 's/[[:space:]]*$//')
     [ -n "$line" ] || { echo "MISSING: '- $p:' line is empty; name the device/simulator or write 'not a mobile change'"; fail=1; }
   done
 fi
