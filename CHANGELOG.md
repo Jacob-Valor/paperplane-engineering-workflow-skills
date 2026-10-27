@@ -2,6 +2,14 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.10
+
+### Fixed
+- `checks.py`: six false positives found by the first real run of S20 to S27 (a prose line ending in a colon reset the "written for a person" state; "For the CTO:" was not read as a handoff; `git tag --list` counted as a tag; `corepack ... && pnpm import` was not a command; `no_npm` flagged `sed`/`grep` text and `npm test` on a repo still on npm; a refusal naming `.env.local` counted as posting it). Six real answers added to the self-test. The hand-label results are unchanged.
+
+### Added
+- `tests/RESULTS.md`: the first held-out run. After the fix sonnet passes 24/24 and haiku 18/24 with the skills, and both pass 0/16 without them.
+
 ## v2026.10.15.9
 
 ### Fixed
