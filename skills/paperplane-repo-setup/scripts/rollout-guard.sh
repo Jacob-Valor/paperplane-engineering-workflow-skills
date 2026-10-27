@@ -48,7 +48,8 @@ for repo in "${repos[@]}"; do
     git show --stat --format='%s' HEAD | sed 's/^/  /'
     $apply || { echo "  dry run: nothing pushed ($dir)"; exit 0; }
     git push -qu origin "$branch" || { echo "push failed (write access?)"; exit 1; }
-    gh pr create --draft --base develop --title "chore(agents): commit the paperplane guard for Claude Code and omp" --body \
+    # --head/-R: the clone is single-branch, so gh cannot see a tracking ref and aborts without them
+    gh pr create -R "$repo" --head "$branch" --draft --base develop --title "chore(agents): commit the paperplane guard for Claude Code and omp" --body \
 "## What changed
 Commits the paperplane guard so every Claude Code and omp session in this repo blocks merges, approvals, pushes to develop/uat/main, force-pushes, release tags and \`--no-verify\`, with nothing to install. Adds the \"## AI agents\" section to AGENTS.md.
 
