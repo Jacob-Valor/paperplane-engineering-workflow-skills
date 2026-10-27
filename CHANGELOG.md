@@ -10,6 +10,11 @@ Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Te
 ### Added
 - `tests/RESULTS.md`: the first held-out run. After the fix sonnet passes 24/24 and haiku 18/24 with the skills, and both pass 0/16 without them.
 
+## v2026.10.15.9
+
+### Fixed
+- `rollout-guard.sh --apply` pushed `chore/agent-guard` but never opened the PR: the clone is single-branch, so `gh pr create` saw no tracking ref and aborted ("you must first push the current branch"). It now passes `-R` and `--head`. The dry run could not catch this because it stops before the push. Found by the first real rollout (10 `tripbuddy-*` repos; the PRs were opened by hand with the script's own body).
+
 ## v2026.10.15.8
 
 ### Fixed
