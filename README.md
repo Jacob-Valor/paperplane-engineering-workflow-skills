@@ -104,6 +104,13 @@ scripts it runs, and fails closed on `$VAR` or `$(...)` in a push target. It doe
 `claude-guard.sh` lists what still gets through. Branch protection and required reviews on the server are
 the real control.
 
+To put the guard into many team repos at once (write access needed; dry run by default):
+
+```bash
+bash <skills>/paperplane-repo-setup/scripts/rollout-guard.sh paperplanehq/tripbuddy-backend paperplanehq/tripbuddy-app
+bash <skills>/paperplane-repo-setup/scripts/rollout-guard.sh --apply paperplanehq/tripbuddy-backend   # draft PR into develop
+```
+
 ## Engineering workflow
 
 ### From a change to `develop`

@@ -5,6 +5,7 @@ Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Te
 ## v2026.10.15.8
 
 ### Fixed
+- Guard: a bare `git push`, `git push origin` and `git push origin HEAD`/`@` are blocked while on `develop`, `uat` or `main` (they passed before).
 - Guard: quote-split command names (`g''it`, `n''pm`) are checked; the early "no git/gh/npm in the string" exit is gone.
 - Guard: blocks writing `core.hooksPath` or `alias.*` (`git config`, `-ccore.hooksPath=`, `--config-env`), `GIT_CONFIG_*`/`GIT_DIR`/`GIT_EXEC_PATH` on git commands, `--no-verify` on merge/rebase/cherry-pick/am, and `git send-pack`. Reading config stays allowed.
 - Guard: `git push --follow-tags`, `heads/main`, wildcard, `{brace}`, `$'...'` and bare `:` refspecs are blocked.
@@ -59,11 +60,12 @@ Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Te
 
 ## v2026.10.15.6
 
-### Fixed
-- Claude Code guard: `git push`, `git push origin`, and `git push origin HEAD`/`@` now resolve the current branch from the hook's `cwd` and block when it is `develop`, `uat` or `main`. Before, they passed the guard, so a committed-guard-only setup relied on the git pre-push hook or the server ruleset to stop them. 11 new cases in `test-hooks.sh`.
+### Added
+- `repo-setup/scripts/rollout-guard.sh`: commits the guard (Claude Code and omp) and the AGENTS.md "## AI agents" section in any number of repos. Dry run by default; `--apply` pushes `chore/agent-guard` and opens a draft PR into `develop`. Needs write access.
 
 ### Changed
-- README says what the guard cannot see: variables, command substitution, scripts, `gh alias`. It stops mistakes, and the server-side ruleset is the backstop.
+- The AGENTS.md "## AI agents" section names the omp adapter too.
+- This repo's `main` is protected: PR required, review threads resolved, `skills are valid and scripts work` green, no force-push or deletion.
 
 ## v2026.10.15.5
 
