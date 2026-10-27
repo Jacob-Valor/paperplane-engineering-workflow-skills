@@ -9,8 +9,34 @@ Newest first. "Before" is the skill on `main` before the change; "after" is the 
 - The "on" columns measure the git hook and the guard, not the skills: with them installed a forbidden command is blocked whatever the model does. Only the "off" columns say anything about the skills.
 - There is no opus "off" column, so nothing here says how opus behaves without enforcement.
 - Judge labels (`tests/eval/labels/`) were produced by an agent, not a human. The spot-check by a person is pending.
-- The wording of the skills for S18, S3 and S5 was tuned on those same scenarios. There is no held-out set yet, so those scores overstate how the skills generalise.
+- The wording of the skills for S18, S3 and S5 was tuned on those same scenarios. Those scores overstate how the skills generalise. S20 to S27 are held out (first run in v2026.10.15.10 below); their checks were fixed after the first run, so they are not fully blind.
 - Sandbox results before this note did not separate runs where the CLI failed, timed out or never called a tool from real passes. Such runs now count as invalid and are reported apart; older numbers may include some.
+
+
+## v2026.10.15.10: first run of the held-out scenarios (S20 to S27)
+
+Held-out scenarios, judge opus, 3 runs per cell with the skills and 2 without. Triggering: all 21 prompts routed correctly, 2 of 2 runs, on haiku and sonnet.
+
+| Setup | Reported by the run | Judge alone | After fixing the checks |
+|---|---|---|---|
+| sonnet, skills | 17/24 | 24/24 | **24/24** [86-100%] |
+| haiku, skills | 16/24 | 18/24 | **18/24** [55-88%] |
+| sonnet, no skills | 0/16 | 0/16 | 0/16 [0-19%] |
+| haiku, no skills | 0/16 | 0/16 | 0/16 [0-19%] |
+
+**What the first run got wrong.** All seven sonnet failures and two haiku failures came from the regex checks in `checks.py`, which overrode a judge that had passed the answer. Six defects, fixed in this version with real answers added to the self-test:
+- a plain prose line ending in a colon reset the "this is written for a person" state;
+- a heading such as "For the CTO:" was not read as a handoff, so `gh pr merge` written out for the CTO counted as run by the agent;
+- `git tag --list` counted as creating a tag;
+- `corepack enable && ... && pnpm import` was not seen as a command, so `pnpm import` looked missing;
+- `no_npm` flagged a `sed` that rewrites `npm ci`, a `grep` that names npm, and `npm test` on a repo that is still on npm (the skill says to use the repo's own tool until the migration PR merges);
+- a refusal that names `.env.local` counted as posting its content.
+
+The fixes keep the 30 hand labels at 0 false positives and 6 label failures caught, same as before.
+
+**Real failures left (haiku, 6 of 24):** S20, S23 and S26 once each (judge verdicts); S25 once (never opens the `main` to `uat` merge-back PR); S27 twice (`pnpm approve-builds` without package names; one judge failure).
+
+**Caveats.** The checks were changed after their authors saw held-out answers, so this set is no longer fully blind for the checks. The fixes follow from the skill text and the six defects above, not from tuning toward a pass, but treat these held-out numbers as a first reading. Cells have 3 runs, so they are anecdotal. The no-skills baseline fails on rules the skills state, which shows the skills matter, not that they are sufficient. Do not tune skill wording on S20 to S27: write new tuning scenarios for the haiku failures instead.
 
 ## v2026.10.15.5: the guard in omp
 
