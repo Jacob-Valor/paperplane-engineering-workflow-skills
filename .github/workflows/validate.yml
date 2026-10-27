@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4 # pin to SHA via dependabot
 
-      - uses: astral-sh/setup-uv@v6 # pin to SHA via dependabot
+      - uses: astral-sh/setup-uv@v7 # pin to SHA via dependabot
 
       - uses: oven-sh/setup-bun@v2 # pin to SHA via dependabot; runs the omp adapter tests in test-hooks.sh
 
