@@ -13,7 +13,7 @@ check() { # check <name> <test-expression...>
 bad() { echo "     $*"; }
 
 skills=$(ls -d skills/*/ | sed 's#skills/##; s#/$##')
-body() { sed '1,/^---$/{/^---$/!d;}' "skills/$1/SKILL.md" | sed '1,/^---$/d'; } # after the frontmatter
+body() { awk 'NR==1&&/^---$/{f=1;next} f&&/^---$/{f=0;next} !f' "skills/$1/SKILL.md"; } # after the frontmatter (awk: sed ranges differ between BSD and GNU)
 front() { awk 'NR==1&&/^---$/{f=1;next} f&&/^---$/{exit} f' "skills/$1/SKILL.md"; }
 desc() { front "$1" | sed -n 's/^description: *//p'; }
 
@@ -96,7 +96,7 @@ exc_ok() {
 }
 for s in $skills; do check "exception rule wording: $s" exc_ok "$s"; done
 for s in paperplane-shipping-changes paperplane-releasing; do
-  check "exception rule present: $s" bash -c "sed '1,/^---\$/d;1,/^---\$/d' 'skills/$s/SKILL.md' | grep -q '$EXC'"; done
+  check "exception rule present: $s" grep -qF -- "$EXC" <<<"$(body "$s")"; done
 # Force-push: whoever mentions it says agents never do it (the human does).
 fp_ok() {
   body "$1" | grep -qi 'force-push' || return 0
