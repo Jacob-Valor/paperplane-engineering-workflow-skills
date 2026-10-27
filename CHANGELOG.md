@@ -2,6 +2,16 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.11
+
+### Fixed
+- **repo-setup**: `pnpm approve-builds` is run with the package names; with none it is interactive and approves nothing in a script.
+- **shipping-changes**: the message to the CTO is written out in the reply, not offered.
+- `checks.py`: a push's arguments no longer run across `&&` (so `git push ... && gh pr create --base develop` is not a push to `develop`, and a title containing `prod-2026...` is not a tag push); "Handover to the CTO:" lines are written for a person; a prose mention of `yarn install` is not running it.
+
+### Added
+- Tuning scenarios S40 to S44 (merge-back to both branches, stack depth, red `develop`, backend onboarding, "just this once") with checks and self-test samples. Their criteria were rewritten after the first run showed they demanded more than the skills say. First results in `tests/RESULTS.md`.
+
 ## v2026.10.15.10
 
 ### Fixed

@@ -64,7 +64,7 @@ The `## AI agents` section of `AGENTS.md`:
 corepack enable && corepack use pnpm@latest    # writes "packageManager" to package.json
 pnpm import                                    # converts package-lock/yarn.lock, keeping resolved versions
 git rm --ignore-unmatch package-lock.json yarn.lock bun.lock bun.lockb
-pnpm install && pnpm approve-builds @sentry/react-native   # approve exactly the packages pnpm lists under "Ignored build scripts" (here Sentry); not every native module has one
+pnpm install && pnpm approve-builds @sentry/react-native   # approve exactly the packages pnpm lists under "Ignored build scripts" (here Sentry), by name: with no names it is interactive and approves nothing in a script; not every native module has one
 # switch every npm/yarn/npx use in scripts, CI, Dockerfiles, EAS config and AGENTS.md to pnpm, then:
 pnpm test                                      # and the repo's build
 pnpm exec expo run:ios && pnpm exec expo run:android   # React Native/Expo: before Ready, even when asked to skip
