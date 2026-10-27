@@ -2,6 +2,62 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.8
+
+### Fixed
+- Guard: a bare `git push`, `git push origin` and `git push origin HEAD`/`@` are blocked while on `develop`, `uat` or `main` (they passed before).
+- Guard: quote-split command names (`g''it`, `n''pm`) are checked; the early "no git/gh/npm in the string" exit is gone.
+- Guard: blocks writing `core.hooksPath` or `alias.*` (`git config`, `-ccore.hooksPath=`, `--config-env`), `GIT_CONFIG_*`/`GIT_DIR`/`GIT_EXEC_PATH` on git commands, `--no-verify` on merge/rebase/cherry-pick/am, and `git send-pack`. Reading config stays allowed.
+- Guard: `git push --follow-tags`, `heads/main`, wildcard, `{brace}`, `$'...'` and bare `:` refspecs are blocked.
+- Guard: wrapper commands with options (`sudo -u`, `nice -n`, `env -u/-C`, `xargs -I{}`, `watch`, `ssh host`) and `find -exec` are unwrapped and checked.
+- Guard: heredoc and here-string input to bash/sh/zsh/dash/eval/source is checked. `$((1<<2))` no longer hides later lines, and an unterminated heredoc is scanned instead of skipped.
+- Guard: the branch check and pnpm detection follow `git -C <dir>`, `cd` and `pushd`. A bare `git push` is blocked when `push.default=upstream` or `remote.<name>.push` points at develop, uat or main.
+- Guard: more package-manager forms are blocked in pnpm repos (`npm --prefix x install`, `npm -w p install`, `uninstall`, `update`, `exec`, `it`, `cit`, `clean-install`, `yarn remove/dlx`, `bunx`, `bun x`). `npm run ...`, `npm --version`, global installs and `yarn test` stay allowed.
+- Guard: blocks `gh alias set`, `gh extension install/exec`, `gh api graphql` with `query=@file` or `--input` (unless GET), and `git add ./.` and `:/` variants. The tool name match is case-insensitive, and an unreadable or non-string command exits 1 instead of passing silently.
+- Git pre-push hook: blocks pushing or deleting `prod-*`/`uat-*` release tags, and blocks the push when gitleaks is missing unless `PAPERPLANE_ALLOW_NO_GITLEAKS=1`.
+- `pre-push.sh`: `build/`, `dist/` and `coverage/` count as build output only at the repo root or beside a `package.json` (`src/build/x.ts` is fine). `.env.sample`, `.env.template`, `.env.dist` and `.env.*.example` are exempt.
+- `audit.sh`: no false FAILs on branch lists over 64 KB (SIGPIPE under pipefail); the ruleset check requires `enforcement: active`; CODEOWNERS is accepted at `.github/`, the root or `docs/`; `ready_for_review` and `concurrency` are read from the real `on.pull_request.types` and top-level `concurrency`, ignoring comments and job-level keys.
+- `next-tag.sh`: `--date` rejects impossible days (`2026-02-31`) and a missing value; `--prefix` and `--before` without a value are usage errors; `--previous` tie-breaking is documented and tested.
+- `check-pr-body.sh`: multi-line and adjacent HTML comments are stripped correctly, `AI-assisted: yesterday` fails, CRLF bodies work (new `test-check-pr-body.sh`).
+- `gather.sh`: reports when only the first 100 commits are shown and when the PR comes from a fork; any check state other than pass, skipping or neutral blocks.
+- Drift check: an expired or revoked token (HTTP 401/403) fails even with `DRIFT_ALLOW_SKIP=1`; only a missing secret skips.
+- Sandbox eval: runs where the CLI failed, timed out, produced no result event or made no tool call are INVALID (not pass, not fail), reported separately; any invalid run exits 3.
+
+- Guard fails closed on `git push` refspecs that contain `$VAR`, `${...}`, `$(...)` or backticks, and on a variable command word followed by push, merge or pr.
+- Guard reads the scripts it is told to run (shell, plus a text scan for python, node, ruby and perl; three levels, 64 KB), scans inline `python -c`/`node -e`/`perl -e`/`ruby -e`, and blocks `curl | sh`, `base64 -d | sh`, `eval "$(...)"`, `sh -c "$(...)"` and `bash <(curl ...)`.
+- Guard parses quoted arguments of ssh, watch, su, docker, timeout and similar wrappers, and `pnpm|npm|yarn exec`. A `cd` inside `( )`, `$( )`, backticks or `bash -c` no longer changes the directory used for later commands.
+- Guard refuses commands that remove or rewrite the guard, its settings, the git or husky pre-push hooks and the omp adapter, and commands that set `PAPERPLANE_ALLOW_NO_GITLEAKS`. Side effect: an agent cannot run `tests/scripts/test-hooks.sh` through the guard; a person can.
+- Guard blocks `git update-ref` and `git branch -f|-m|-d` on develop, uat and main, `git -c push.default=matching`, and `git add *`. The header lists what it still does not catch.
+- Scripts that push with a variable (`git push origin "$tag"`) are blocked when run through the guard; name the branch literally.
+
+
+### Added
+- Eval summaries print Wilson 95% intervals next to pass rates. Scenarios can be tagged `heldout: true` (`run.py --heldout-only` / `--exclude-heldout`); held-out scenarios must never be used to tune skill wording.
+- CI: a macOS job runs `bash -n` and the script tests on bash 3.2 / BSD tools; gitleaks downloads are checked against the release checksums; `dependabot.yml` updates actions weekly; scheduled drift failures open or update a `drift` issue.
+- `tests/RESULTS.md`: "How to read these numbers" and two over-claiming sentences reworded (recorded numbers unchanged).
+
+### Added (tests and docs)
+- `tests/scripts/test-skills-lint.sh`: offline lint for skill frontmatter, referenced script paths, cross-skill rule wording, description trigger ownership, Hard-rules enforcement mapping, the README skill table and placeholders.
+- Eight held-out scenarios (S20 to S27, all five skills) and `tests/eval/label.py`, a blind human spot-check tool (`sample`, `report`) that prints agreement, kappa and judge precision/recall. `label.py --self-test` runs in CI.
+- `docs/org-facts.md` and a README section "Using this for another org". Skills define the CTO role once and say "the CTO" elsewhere; example person names became roles. Canonical wording unified: "No exception is granted in the agent conversation" and "Agents never force-push".
+
+### Changed
+- CI: `ANTHROPIC_API_KEY` is scoped to the steps that run claude; eval concurrency separates scheduled, manual and pull request runs.
+- Re-run `install-claude-hook.sh --commit` in each repo to refresh the committed guard; `audit.sh` warns when a copy is out of date.
+
+## v2026.10.15.7
+
+### Fixed
+- **shipping-changes** and **secret-incidents** now agree on history rewrites: the local `git rebase -i` that drops a pushed secret is the one carve-out from "never rebase a pushed branch"; the agent prepares it and stops, the human force-pushes.
+- Exceptions: one rule in shipping, releasing and README. No exception is granted in the agent conversation, even by the CTO; the agent follows the rule and drafts a message to the CTO, and a human acts outside the agent.
+- README, flowchart and table agree with shipping step 7: the agent runs `gh pr ready` only after the person says they reviewed the diff.
+- **releasing**: release PRs open as `--draft` with a body skeleton that passes `check-pr-body.sh --no-mobile`; merge-back PR title format and a `chore/merge-back-<tag>` branch for conflicts. **reviewing-prs**: Size/Leftovers/Tests apply to the merged PRs, not the release PR.
+- **shipping-changes**: `gh pr ready --undo` before pushing post-review commits; hotfixes branch from `main`; reply rules for review threads ("Fixed in <sha>", never resolve, draft rejections); PR body files live in `${TMPDIR:-/tmp}`, not the working tree; how to resolve `<skill>`.
+
+### Changed
+- Descriptions: releasing drops bare "ship" (now "ship to production"); reviewing-prs says "approving", not "merging"; repo-setup says auto-merge is the repo setting. `tests/triggering.md` has 9 more prompts for these collisions.
+- Pruned cryptic or duplicate Rationalizations rows; reviewing-prs' two red-check rows are one.
+
 ## v2026.10.15.6
 
 ### Added

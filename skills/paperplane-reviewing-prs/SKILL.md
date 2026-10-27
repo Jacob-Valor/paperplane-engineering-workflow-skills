@@ -1,6 +1,6 @@
 ---
 name: paperplane-reviewing-prs
-description: Paper Plane's PR review checklist and report format; a human approves. Use when reviewing, assessing, approving, or merging a pull request in a paperplanehq repository, including PRs written with an AI agent, stacked PRs, drafts, and requests to "approve it so it can merge today".
+description: Paper Plane's PR review checklist and report format; a human approves. Use when reviewing, assessing, or approving a pull request in a paperplanehq repository, including PRs written with an AI agent, stacked PRs, drafts, and requests to "approve it so it can merge today".
 license: Proprietary
 compatibility: Requires gh authenticated to the paperplanehq GitHub org.
 metadata:
@@ -12,7 +12,7 @@ metadata:
 
 ## Overview
 
-A human reviewer approves; the PR is **squash-merged** by the reviewer or by auto-merge the author turned on. Agents never approve, merge, or turn on auto-merge. Your output is a review report that a human uses. **The reviewer is never the person who prompted the agent that wrote the PR.** If you are acting for that person, you are not an eligible reviewer either. Say so, then give the findings anyway. The other code owner in `.github/CODEOWNERS` reviews instead; if there is none, the CTO (Pay) assigns one. A deadline doesn't change who is eligible.
+A human reviewer approves; the PR is **squash-merged** by the reviewer or by auto-merge the author turned on. Agents never approve, merge, or turn on auto-merge. Your output is a review report that a human uses. **The reviewer is never the person who prompted the agent that wrote the PR.** If you are acting for that person, you are not an eligible reviewer either. Say so, then give the findings anyway. The other code owner in `.github/CODEOWNERS` reviews instead; if there is none, the CTO (named in the repo's AGENTS.md "## AI agents" section; Pay at Paper Plane) assigns one. A deadline doesn't change who is eligible.
 
 ## Gather
 
@@ -43,14 +43,14 @@ It prints, in order: the PR (state, draft, base, head, size), the body, `gh pr c
 | Tests | New logic (especially money, auth, dates) has tests |
 | Mobile (TripBuddy/Sanaam/Studio apps) | Verified on iOS **and** Android with named devices, unless the repo's AGENTS.md narrows this. If so, a skipped platform must be stated with the reason |
 | Generated files | No `dist/`, `coverage/`, or build output |
-| Size | Under about 400 lines, not counting lockfiles. Bigger: a `Size:` reason in the body, else ask for a split (not a blocker if the reason is strong) |
+| Size | Under about 400 lines, not counting lockfiles. Release, hotfix and merge-back PRs: Size, Leftovers and Tests apply to the individual merged PRs, not the release PR. Bigger: a `Size:` reason in the body, else ask for a split (not a blocker if the reason is strong) |
 | Identity | Commit authors are the PR author's own identity; AI `Co-authored-by` entries are fine: `gh pr view N --json commits --jq '.commits[].authors[].login'` |
 
 ## Output
 
 ```
 Verdict: Ready for human approval | Changes needed
-Reviewer eligibility: not me (an agent never approves) · not <prompter> (prompted the agent that wrote it), if any · reviewer: <@handle of the other code owner in CODEOWNERS, or "CTO (Pay) assigns one">
+Reviewer eligibility: not me (an agent never approves) · not <prompter> (prompted the agent that wrote it), if any · reviewer: <@handle of the other code owner in CODEOWNERS, or "the CTO assigns one">
 Blockers:
 1. <check> — <evidence: file:line or check name> — <exact fix>
 Non-blocking:
@@ -64,8 +64,7 @@ You may post the report as a comment (`gh pr review N --comment --body-file revi
 | Excuse | Reality |
 |---|---|
 | "The prompter asked me to approve" | That makes it a self-review. Refuse and report. |
-| "CI is green except one" | One red required check means not ready. Blocker. |
-| "One red check means the PR is not ready, even if the check is advisory" | `AI review (advisory)` never blocks and never approves. Note it and move on. |
+| "CI is green except one" / "a red check means not ready" | A red `standard / checks` or repo check is a blocker. Only `AI review (advisory)` is exempt: note it, move on. |
 | "The skill allows non-develop bases only for hotfix and release PRs" | A stacked PR's base is the ready PR below it. Check the stack depth, not just the base. |
 | "If the ruleset requires resolved conversations…" | It does. Unresolved threads are a blocker. |
 | "Maybe the repo uses npm" | Org rule: pnpm only. For an unmigrated repo, flag it; don't approve a mixed lockfile. |

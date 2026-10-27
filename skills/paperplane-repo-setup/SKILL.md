@@ -1,6 +1,6 @@
 ---
 name: paperplane-repo-setup
-description: Paper Plane's standard files, CI and repo settings, applied by copying the engineering templates. Use when creating or onboarding a repository in the paperplanehq GitHub org, or when a paperplanehq repo lacks the standard CI workflow, PR template, CODEOWNERS, AGENTS.md/CLAUDE.md, .env.example, pnpm, the develop/uat/main branches, or a repo setting such as allowing auto-merge — "set it up to our engineering standard", "migrate to pnpm".
+description: Paper Plane's standard files, CI and repo settings, applied by copying the engineering templates. Use when creating or onboarding a repository in the paperplanehq GitHub org, or when a paperplanehq repo lacks the standard CI workflow, PR template, CODEOWNERS, AGENTS.md/CLAUDE.md, .env.example, pnpm, the develop/uat/main branches, or a repo setting such as allowing auto-merge in the repo's merge settings (not turning it on for a PR) — "set it up to our engineering standard", "migrate to pnpm".
 license: Proprietary
 compatibility: Requires gh authenticated to the paperplanehq GitHub org; pnpm for migrations.
 metadata:
@@ -12,12 +12,12 @@ metadata:
 
 ## Overview
 
-The standard is applied by **copying** what `paperplanehq/paperplane-engineering` provides. Don't reinvent it. Branch protection comes from the org ruleset `protect-develop-uat-main`, which already covers every repo, so never create per-repo branch protection. File changes go in through a normal PR (see **paperplane-shipping-changes**). Repo **settings** changes are the CTO's: you check them and write out the commands.
+The standard is applied by **copying** what `paperplanehq/paperplane-engineering` provides. Don't reinvent it. Branch protection comes from the org ruleset `protect-develop-uat-main`, which already covers every repo, so never create per-repo branch protection. File changes go in through a normal PR (see **paperplane-shipping-changes**). Repo **settings** changes are the CTO (named in the repo's AGENTS.md "## AI agents" section; Pay at Paper Plane)'s: you check them and write out the commands.
 
 ## 1. Audit
 
 ```bash
-bash <skill>/scripts/audit.sh paperplanehq/<repo>   # <skill> = the folder this SKILL.md is in; read-only
+bash <skill>/scripts/audit.sh paperplanehq/<repo>   # <skill> = the directory containing this SKILL.md (else: find ~ -type d -name paperplane-repo-setup -not -path '*/node_modules/*' 2>/dev/null | head -1); read-only
 ```
 
 One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; merge settings (squash and merge commit on, rebase off, delete branch on merge, auto-merge allowed); the `protect-develop-uat-main` ruleset; `AGENTS.md` (naming the `paperplane-*` skills), `CLAUDE.md`, `.env.example`, PR template, `pnpm-lock.yaml` and no other lockfile; CODEOWNERS with two owners per line; `standard.yml` calling `standard-checks.yml@develop`, with `ready_for_review`, `concurrency` and, for app repos (`app.json`/`eas.json` found, or `--app`), `mobile: true`; the committed Claude Code guard, same as the installed skills' copy. Exit 1 means at least one FAIL. Every FAIL maps to a section below.
@@ -54,8 +54,8 @@ The `## AI agents` section of `AGENTS.md`:
 ```markdown
 ## AI agents
 - Load the `paperplane-*` skills before any git or gh work (paperplane-shipping-changes to commit, push and open PRs).
-- The committed guard (`.claude/settings.json` + `.claude/hooks/paperplane-guard.sh` for Claude Code, `.omp/hooks/pre/paperplane-guard.ts` for omp) blocks forbidden commands: merges, approvals, pushes to develop/uat/main, force-pushes, release tags, `--no-verify`. Never remove or bypass it.
-- Once per clone, install the git pre-push hook: `bash <skills>/paperplane-shipping-changes/hooks/install-git-hook.sh` (`<skills>`: where the skills are installed, e.g. `~/.agents/skills`).
+- The committed guard (`.claude/settings.json` + `.claude/hooks/paperplane-guard.sh` for Claude Code, `.omp/hooks/pre/paperplane-guard.ts` for omp) blocks forbidden commands: merges, approvals, pushes to develop/uat/main, force-pushes (agents never force-push), release tags, `--no-verify`. Never remove or bypass it.
+- Once per clone, install the git pre-push hook: `bash <skills>/paperplane-shipping-changes/hooks/install-git-hook.sh` (`<skills>`: where the skills are installed, e.g. `~/.agents/skills`, or `~/.claude/skills` for Claude Code).
 ```
 
 ## 3. pnpm migration (separate PR, `chore/pnpm`)
@@ -68,7 +68,7 @@ pnpm install && pnpm approve-builds @sentry/react-native   # approve exactly the
 # switch every npm/yarn/npx use in scripts, CI, Dockerfiles, EAS config and AGENTS.md to pnpm, then:
 pnpm test                                      # and the repo's build
 pnpm exec expo run:ios && pnpm exec expo run:android   # React Native/Expo: before Ready, even when asked to skip
-gh pr create --draft --base develop --title "chore(pnpm): switch from yarn to pnpm" --body-file pr-body.md
+gh pr create --draft --base develop --title "chore(pnpm): switch from yarn to pnpm" --body-file "${TMPDIR:-/tmp}/pr-body.md"   # outside the working tree, so it can't be committed
 # pr-body.md Risk has one line per approved package, e.g.:
 #   - @sentry/react-native: @sentry/cli downloads its binary to upload source maps
 ```

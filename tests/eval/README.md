@@ -23,6 +23,9 @@ python3 tests/eval/run.py --scenarios s1,s9 --dry-run              # print the p
 | `--trigger` | off | Also run `triggering.md` |
 | `--dry-run` | off | Print the prompts and pass criteria; call nothing |
 | `--no-checks` | off | Skip the mechanical checks in `checks.py` |
+| `--heldout-only` | off | Run only scenarios tagged `heldout: true` and report them on their own |
+| `--exclude-heldout` | off | Skip scenarios tagged `heldout: true` (use this while tuning skill wording) |
+| `--self-test` | off | Test the Wilson interval and held-out selection; calls no model (CI runs it) |
 
 Each run is two `claude -p` calls with no tools, no saved session and `--safe-mode` (no CLAUDE.md, installed skills or hooks):
 
@@ -33,6 +36,16 @@ Each run is two `claude -p` calls with no tools, no saved session and `--safe-mo
 The triggering test gives the `name: description` pairs and `triggering.md`, then checks each line against the expected table in `../README.md`: an extra skill passes, a missing or wrong one fails.
 
 Output: `<timestamp>/<scenario>/repN.{prompt,answer,judge}.*`, `trigger/repN.*` and `summary.md` (`scenario | passed/total | failing reasons`, also printed). Each `repN.judge.json` also records the answer's `input_tokens`, `output_tokens` and `answer_seconds`.
+
+## Intervals and held-out scenarios
+
+Every pass rate in `summary.md` carries a Wilson 95% interval, for example `8/10 [49-94%]`. With n <= 5 a cell is anecdotal, and two cells whose intervals overlap are not shown to differ. The sandbox summary does the same, and lists invalid runs (CLI error, timeout, no result event, no tool call) apart from passes and failures; any invalid run makes `sandbox/run.py` exit 3.
+
+A scenario is held out when its first line carries the tag: `<!-- skill under test: paperplane-x; heldout: true -->`. `--heldout-only` runs just those and the summary adds held-out and not-held-out rows. **Never use held-out scenarios to tune skill wording**: not to read failing answers and edit the skill, not to pick between two phrasings. Run them after the wording is frozen, report the result as it is, and if you do change the skill because of one, retire that scenario from the held-out set and write a new one. Scenarios live in `tests/scenarios/`; S20-S27 are tagged held out.
+
+### Held-out protocol
+
+S20-S27 (two shipping, two reviewing-prs, one secret-incidents, two releasing, one repo-setup) use repos, people, paths and numbers that no tuning scenario uses. Run them only with `--heldout-only`, once the wording is frozen, and report their pass rate (with the interval) on its own line, apart from the tuned scenarios; tune with `--exclude-heldout`. Never use them to edit skill wording: don't read their failing answers to decide what a skill should say. If a held-out scenario fails, write a new tuning scenario for the same failure, fix the skill against that one, then retire or rewrite the held-out scenario (a rewritten one counts as new only with different names and facts), and add a fresh held-out scenario to replace it.
 
 ## Benchmark
 
@@ -54,9 +67,27 @@ The grader is a model too. Read the answers of every failing run, and a sample o
 
 ## Grader checks
 
-`python3 tests/eval/checks.py --self-test` tests the checks on sample answers (CI runs it). `python3 tests/eval/checks.py <run dir>` re-scores saved answers with no model calls. `python3 tests/eval/checks.py --labels` compares the checks with `labels/labels.jsonl`.
+`python3 tests/eval/checks.py --self-test` tests the checks on sample answers, passing and failing, for S1-S14 and S20-S27 (CI runs it). `python3 tests/eval/checks.py <run dir>` re-scores saved answers with no model calls. `python3 tests/eval/checks.py --labels` compares the checks with `labels/labels.jsonl`.
 
-`labels/labels.jsonl` has 30 answers from the 2026-10-16 benchmark, each read by hand against its criteria row. `run` points to the saved answer in `labels/answers/`, named `<scenario>-<model>-<skills|base>-<n>.md`. The labels are an agent's careful independent read, not a human's. The opus judge agreed on 28 of 30 (93%). Owner: spot-check 10 rows, including the two where `judge_pass` ≠ `label_pass`, and correct any label you disagree with.
+`labels/labels.jsonl` has 30 answers from the 2026-10-16 benchmark, each read by hand against its criteria row. `run` points to the saved answer in `labels/answers/`, named `<scenario>-<model>-<skills|base>-<n>.md`. The labels are an agent's careful independent read, not a human's. The opus judge agreed on 28 of 30 (93%). Owner: run the human spot-check below (or at least spot-check 10 rows, including the two where `judge_pass` ≠ `label_pass`) and correct any label you disagree with.
+
+## Human spot-check
+
+The labels in `labels/labels.jsonl` are an agent's read, not a human's, so the judge's accuracy is unmeasured. `label.py` makes the check a 20-minute job: 40 answers, about 30 seconds each.
+
+```bash
+python3 tests/eval/label.py sample --n 40 --seed 1   # blind: the judge's verdict is never shown
+python3 tests/eval/label.py report                   # agreement, kappa, judge precision/recall, disagreements
+python3 tests/eval/label.py --self-test              # offline test with fake data (CI-safe)
+```
+
+`sample` picks answers from `labels/answers/*.md`, stratified by scenario (round-robin, so no scenario dominates), skips ones you already labeled, and shows each next to its scenario and pass criteria. Type `p` (pass), `f` (fail), `s` (skip, not recorded) or `q` (quit; stop and resume later). Judge yourself against the criteria row, not against what the answer sounds like. Each p/f appends one line to `labels/human.jsonl`:
+
+```json
+{"run": "tests/eval/labels/answers/s1-opus-skills-1.md", "scenario": "s1", "human_pass": true, "labeler": "Name", "ts": "2026-10-27T10:15:00+00:00"}
+```
+
+The newest line per `run` wins; `sample --relabel <run>` shows one answer again. `report` joins `human.jsonl` with `judge_pass` in `labels.jsonl` and prints agreement with a Wilson 95% interval, Cohen's kappa, per scenario the judge's precision (judge pass that the human passed) and recall (human pass that the judge passed) with intervals, and every disagreement with the judge's reason. With 40 labels over 20 scenarios each scenario has about 2 answers, so read the per-scenario rows as pointers, not rates. Fix a wrong label in `labels.jsonl` only after reading the disagreement. Then update the "agreed on N of 30" line above.
 
 ## Sandbox eval (tools on)
 

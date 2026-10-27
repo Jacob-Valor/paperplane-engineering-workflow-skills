@@ -1,7 +1,7 @@
 # Paper Plane engineering workflow skills
 
 [![validate](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml/badge.svg)](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml)
-Version **v2026.10.15.6**, matching the guide of 2026-10-15 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
+Version **v2026.10.15.8**, matching the guide of 2026-10-15 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
 
 Agent skills that encode the [Paper Plane engineering guide](https://github.com/paperplanehq/paperplane-engineering)
 for every repository in the `paperplanehq` GitHub org. They follow the
@@ -23,6 +23,18 @@ use pnpm only, keep secrets out of git, and leave merging, releasing and deployi
 
 Agents load a skill automatically when the request matches its description. You can also ask for
 one by name: "use paperplane-shipping-changes".
+
+## Using this for another org
+
+The org-specific facts (org slug, CTO role, branch names, release cadence, where the guide lives) are
+listed in [`docs/org-facts.md`](docs/org-facts.md); edit them there first. Then list every remaining
+org-specific string with:
+
+```bash
+grep -rnE 'paperplanehq|Paper Plane|\bPay\b|TripBuddy|Sanaam|Studio|protect-develop-uat-main|release-tags-owner-only' skills README.md
+```
+
+After the edit, `bash tests/scripts/test-skills-lint.sh` checks that the skills still agree with each other.
 
 ## Repository layout
 
@@ -54,7 +66,7 @@ tests/drift/check.sh                      do the skills still match the live gui
 Skills tell an agent the rules; hooks enforce them. Install both once per machine or clone. In the
 sandbox eval, small models often never opened a skill and then pushed to `develop` or merged; with
 the hooks installed, nothing reached the remote (`tests/RESULTS.md`).
-`<skills>` is where the skills are installed, e.g. `~/.agents/skills`.
+`<skills>` is where the skills are installed, e.g. `~/.agents/skills` (Claude Code: `~/.claude/skills`).
 
 ```bash
 # In each repo clone: a git pre-push hook for people and agents alike.
@@ -86,6 +98,12 @@ the tool-run evals, small models often never opened a skill, and only the guard 
 2026-10-16 none of the 13 `paperplanehq` repos had it (`audit.sh` FAIL `claude-guard` on all 13).
 Other agents (Codex, Cursor) get only the git pre-push hook and the server-side ruleset.
 
+The guard is best-effort for a cooperative agent, not a sandbox. It reads the Bash command and the small
+scripts it runs, and fails closed on `$VAR` or `$(...)` in a push target. It does not see other tools
+(Edit and Write), remote shells, shell aliases or functions, or code assembled at run time; the header of
+`claude-guard.sh` lists what still gets through. Branch protection and required reviews on the server are
+the real control.
+
 To put the guard into many team repos at once (write access needed; dry run by default):
 
 ```bash
@@ -104,7 +122,7 @@ flowchart TD
   A["Start from latest develop<br/>git switch -c feature/topic"] --> B["Verify with the repo's scripts<br/>pnpm test · pnpm lint<br/>mobile: iOS and Android"]
   B --> C["Commit type(scope): summary<br/>stage files by name"]
   C --> F["pre-push.sh, push the branch the same day<br/>draft PR into develop, AI-assisted: yes"]
-  F --> E["Person running the agent<br/>reviews the full diff<br/>fills the body, marks Ready"]
+  F --> E["Person running the agent<br/>reviews the full diff, says go<br/>agent runs gh pr ready"]
   E --> G{"CI: standard / checks<br/>pnpm only · secret scan · PR title<br/>PR body is complete · PR size"}
   G -->|"green"| R{"Reviewer: a code owner, not the author,<br/>not who prompted the agent<br/>paperplane-reviewing-prs"}
   R -->|"approved, threads resolved"| D[("develop<br/>squash and merge or auto-merge")]
@@ -115,8 +133,9 @@ flowchart TD
   X -.-> C
 ```
 
-Agents run every step except the review, marking Ready, and the merge. They push and open the draft,
-show the full diff, and mark the PR ready only when the person says they reviewed it. At most two
+Agents run every step except the review and the merge. They push and open the draft,
+show the full diff, and run `gh pr ready` only after the person says they reviewed it (a push after
+Ready first goes back to draft with `gh pr ready --undo`). At most two
 PRs stack; native changes and tooling bumps go in their own PR.
 
 ### From `develop` to production
@@ -178,7 +197,7 @@ Agents follow the same rules as developers (§7), with less authority:
 |---|---|
 | Work on a feature branch; commit as `type(scope): summary`; stage files by name | — |
 | Run `scripts/pre-push.sh` (branch, lockfiles, `.env`, build output, `gitleaks`) before every push; push the branch the same day and open a **draft** PR into `develop` marked `AI-assisted: yes` | — |
-| Show the person running them the full diff; check the body with `scripts/check-pr-body.sh`; mark the PR ready only after their go-ahead | That person reviews every line before Ready |
+| Show the person running them the full diff; check the body with `scripts/check-pr-body.sh`; run `gh pr ready` only after the person says they reviewed it | That person reviews every line and says go |
 | — | The author turns on auto-merge; a code owner approves; the PR squash-merges |
 | Merge `develop` into a stacked branch after the PR below merges | A person rebases and force-pushes, if they prefer |
 | Prepare release PRs, compute the `prod-*` tag, write out the commands | The CTO merges to `uat`/`main`, tags and deploys |
@@ -187,8 +206,9 @@ Agents follow the same rules as developers (§7), with less authority:
 
 Nobody, person or agent, pushes directly to `develop`, `uat` or `main`, runs `npm install`, `yarn` or
 `bun install`, commits a second lockfile, or commits or pastes a secret (§2, §5, §6). A rule that
-doesn't fit your case: ask the CTO before working around it. Asking the agent isn't enough, even
-when the CTO is the one asking.
+doesn't fit your case: ask the CTO. No exception is granted inside the agent conversation, even by
+the CTO: the agent keeps following the rule and drafts a message to the CTO, and a human with the
+right access acts outside the agent.
 
 ## Install
 

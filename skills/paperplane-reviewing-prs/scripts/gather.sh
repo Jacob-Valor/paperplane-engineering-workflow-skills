@@ -37,7 +37,7 @@ printf '%s\n' "$repo" | grep -qE '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' || { echo "
 section() { printf '\n== %s ==\n' "$1"; }
 unavailable() { echo "unavailable: $(printf '%s' "$1" | tr '\n' ' ' | cut -c1-300)"; }
 
-meta=$(gh pr view "$pr" -R "$repo" --json number,title,url,author,state,isDraft,baseRefName,headRefName,additions,deletions,changedFiles --jq '
+meta=$(gh pr view "$pr" -R "$repo" --json number,title,url,author,state,isDraft,baseRefName,headRefName,additions,deletions,changedFiles,isCrossRepository,headRepositoryOwner --jq '
   "PR #\(.number) in '"$repo"'",
   "title: \(.title)",
   "url: \(.url)",
@@ -46,7 +46,8 @@ meta=$(gh pr view "$pr" -R "$repo" --json number,title,url,author,state,isDraft,
   "isDraft: \(.isDraft)",
   "base: \(.baseRefName)",
   "head: \(.headRefName)",
-  "size: +\(.additions) -\(.deletions) in \(.changedFiles) files"' 2>&1) || {
+  "size: +\(.additions) -\(.deletions) in \(.changedFiles) files",
+  (if .isCrossRepository then "fork: yes, head repo owner is \(.headRepositoryOwner.login // "unknown")" else empty end)' 2>&1) || {
   echo "cannot read PR #$pr in $repo: $(printf '%s' "$meta" | tr '\n' ' ')"
   echo "check the number, the repo, and 'gh auth status'"
   exit 2
@@ -67,7 +68,7 @@ section Checks
 checks=$(gh pr checks "$pr" -R "$repo" 2>&1); rc=$?
 printf '%s\n' "$checks"
 if [ "$rc" -ne 0 ]; then
-  blocking=$(printf '%s\n' "$checks" | awk -F'\t' '$2 ~ /^(fail|pending|cancel)$/ && $1 !~ /AI review \(advisory\)$/ {print $1}' | paste -sd, -)
+  blocking=$(printf '%s\n' "$checks" | awk -F'\t' '$2 !~ /^(pass|skipping|neutral)$/ && $1 !~ /AI review \(advisory\)$/ {print $1}' | paste -sd, -)
   if [ -n "$blocking" ]; then echo "(gh pr checks exit $rc: not ready to approve; failing or pending: $blocking)"
   elif printf '%s\n' "$checks" | grep -q "$(printf '\t')"; then echo "(gh pr checks exit $rc: only the advisory AI review is red or pending; it never blocks)"
   else echo "(gh pr checks exit $rc: no checks ran; not ready to approve)"; fi
@@ -87,7 +88,8 @@ else unavailable "$counts"; fi
 
 section "Commit authors"
 if authors=$(gh pr view "$pr" -R "$repo" --json commits --jq '
-    [.commits[].authors[] | if (.login // "") != "" then .login else "\(.name) <\(.email)> (no GitHub login)" end] | unique | .[]' 2>&1); then
+    (.commits | length) as $n | ([.commits[].authors[] | if (.login // "") != "" then .login else "\(.name) <\(.email)> (no GitHub login)" end] | unique | .[]),
+    (if $n >= 100 then "(first 100 commits only: gh returns at most 100, so the PR may have more authors)" else empty end)' 2>&1); then
   printf '%s\n' "$authors"
 else unavailable "$authors"; fi
 

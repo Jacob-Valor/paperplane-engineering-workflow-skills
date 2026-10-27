@@ -14,12 +14,37 @@ jobs:
     name: skills match the engineering guide
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4 # pin to SHA via dependabot
       - name: Explain the token
         run: |
-          echo "Drift check reads paperplanehq/paperplane-engineering with the ORG_READ_TOKEN secret: a fine-grained PAT with read-only Contents on paperplanehq/paperplane-engineering. Without it, pull requests skip the check and scheduled or manual runs fail." >> "$GITHUB_STEP_SUMMARY"
+          echo "Drift check reads paperplanehq/paperplane-engineering with the ORG_READ_TOKEN secret: a fine-grained PAT with read-only Contents on paperplanehq/paperplane-engineering. When the secret is not provided at all (forks), pull requests skip the check; an expired or revoked token fails every run, pull requests included. Failed scheduled runs open or update an issue labelled drift." >> "$GITHUB_STEP_SUMMARY"
       - name: Compare skills with the guide
         env:
           GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
-          DRIFT_ALLOW_SKIP: ${{ github.event_name == 'pull_request' && '1' || '' }}
+          # Skip only when the secret is absent (forks). tests/drift/check.sh fails on a 401/403
+          # even with this set, so an expired token is not a green skip.
+          DRIFT_ALLOW_SKIP: ${{ github.event_name == 'pull_request' && secrets.ORG_READ_TOKEN == '' && '1' || '' }}
         run: bash tests/drift/check.sh
+
+  notify:
+    name: open or update an issue when the scheduled run fails
+    needs: drift
+    if: ${{ always() && needs.drift.result == 'failure' && github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or comment on the drift issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create drift --description "drift check failed" --color D93F0B 2>/dev/null || true
+          body="The scheduled drift check failed: $RUN_URL. Either the skills drifted from the engineering guide or ORG_READ_TOKEN expired or lost access (see the step summary)."
+          number=$(gh issue list --label drift --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --label drift --title "drift check is failing" --body "$body"
+          fi

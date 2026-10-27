@@ -136,6 +136,49 @@ has    "advisory-only red: says it never blocks" 'only the advisory AI review.*n
 lacks  "advisory-only red: not called unready" 'not ready to approve'
 has    "unreadable section reported" '^unavailable: HTTP 502'
 
+# review threads over several pages: every page counts (gh --paginate prints one jq result per page)
+pr_json 20 false develop fix/pages "x"
+{ echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":false},{"isResolved":false},{"isResolved":true}],"pageInfo":{"hasNextPage":true,"endCursor":"c1"}}}}}}'
+  echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":false},{"isResolved":true}],"pageInfo":{"hasNextPage":true,"endCursor":"c2"}}}}}}'
+  echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":false}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}}'; } > "$F/threads-20.json"
+expect "threads on three pages" 0 bash "$G" 20 paperplanehq/demo --no-diff
+under  "threads: all pages counted" "Unresolved review threads" 4
+if grep -q '^api graphql --paginate' "$F/calls"; then pass=$((pass+1)); echo "ok   threads: paginated query is used"
+else fail=$((fail+1)); echo "FAIL threads: gh api graphql was not called with --paginate"; fi
+
+# more than 100 commits: gh returns at most 100, so say so instead of listing a partial set as complete
+pr_json 21 false develop fix/many "x"
+jq -c '.commits = [range(0;100) | {authors:[{login:"alice",name:"Alice",email:"a@x"}]}]' "$F/pr-21.json" > "$F/t" && mv "$F/t" "$F/pr-21.json"
+expect "100 commits (the gh cap)" 0 bash "$G" 21 paperplanehq/demo --no-diff
+has    "100 commits: truncation reported" 'first 100 commits only.*more'
+expect "normal PR has no commit cap note" 0 bash "$G" 10 paperplanehq/demo --no-diff
+lacks  "2 commits: no truncation note" 'first 100 commits'
+
+# gh pr checks states: skipping and neutral never block; cancel and unknown states do
+pr_json 22 false develop fix/states "x"
+printf 'standard / checks\tpass\t40s\thttps://ci/1\nstandard / deploy\tskipping\t0\thttps://ci/2\nstandard / lint\tneutral\t1s\thttps://ci/3\n' > "$F/checks-22.txt"
+expect "skipping and neutral checks" 0 bash "$G" 22 paperplanehq/demo --no-diff
+lacks  "skipping/neutral: no failing-checks note" 'gh pr checks exit'
+printf 'standard / checks\tpass\t40s\thttps://ci/1\nstandard / test\tcancel\t5s\thttps://ci/4\n' > "$F/checks-22.txt"; echo 1 > "$F/checks-22.rc"
+expect "cancelled check" 0 bash "$G" 22 paperplanehq/demo --no-diff
+has    "cancelled: blocks and is named" 'not ready to approve; failing or pending: standard / test'
+printf 'standard / checks\tpass\t40s\thttps://ci/1\nstandard / test\tstartup_failure\t0\thttps://ci/5\n' > "$F/checks-22.txt"
+expect "unknown check state with a non-zero exit" 0 bash "$G" 22 paperplanehq/demo --no-diff
+has    "unknown state: blocks and is named" 'not ready to approve; failing or pending: standard / test'
+printf 'standard / checks\tpass\t40s\thttps://ci/1\nstandard / test\tpending\t0\thttps://ci/6\n' > "$F/checks-22.txt"; echo 8 > "$F/checks-22.rc"
+expect "pending check exits 8" 0 bash "$G" 22 paperplanehq/demo --no-diff
+has    "pending: blocks and is named" 'gh pr checks exit 8: not ready to approve; failing or pending: standard / test'
+
+# fork PR: the head lives in another repo, which a reviewer must know (no secrets, head branch name is not ours)
+pr_json 23 false develop main "x"
+jq -c '.isCrossRepository = true | .headRepositoryOwner = {login:"mallory"}' "$F/pr-23.json" > "$F/t" && mv "$F/t" "$F/pr-23.json"
+expect "fork PR" 0 bash "$G" 23 paperplanehq/demo --no-diff
+has    "fork PR: says it is from a fork" '^fork: yes, head repo owner is mallory$'
+has    "fork PR: branch still shown" '^head: main$'
+has    "fork PR: not treated as stacked" '^not stacked: base is develop$'
+expect "same-repo PR" 0 bash "$G" 10 paperplanehq/demo --no-diff
+lacks  "same-repo PR: no fork line" '^fork:'
+
 expect "repo from gh repo view" 0 bash "$G" 10 --no-diff
 has    "repo from gh repo view: header" '^PR #10 in paperplanehq/demo$'
 

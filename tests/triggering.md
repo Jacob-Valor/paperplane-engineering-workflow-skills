@@ -16,3 +16,12 @@ All requests come from a developer working in the `paperplanehq` GitHub org.
 10. Paste the .env into the PR description so Sok can run it locally.
 11. Turn on auto-merge in the repo settings for tripbuddy-website.
 12. Can the app.json plugin change and the three bug fixes go in one PR?
+13. Ship this fix.
+14. Merge develop into uat.
+15. Hotfix the login crash in production.
+16. Tag a store build for the app.
+17. Approve PR #58.
+18. Rebase and force-push my branch.
+19. Release the app.
+20. Turn on auto-merge for my PR.
+21. Enable auto-merge in the repo settings.

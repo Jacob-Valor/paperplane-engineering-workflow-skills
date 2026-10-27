@@ -5,6 +5,7 @@ Usage:
   python3 tests/eval/run.py [--scenarios s1,s9|all] [--reps 3] [--skill-ref <git-ref> | --no-skills]
                             [--model <name>] [--judge-model <name>] [--jobs 4] [--no-checks]
                             [--out tests/eval/out] [--trigger] [--dry-run]
+                            [--heldout-only | --exclude-heldout] [--self-test]
 
 Each scenario run is a written role-play: one `claude -p` call (no tools, no session saved)
 answers the scenario with the skill under test, and a second call grades the answer against
@@ -53,6 +54,56 @@ No meta commentary about the role-play, the test or these instructions."""
 SKILLS_INTRO = """\
 The skills below are installed and loaded. `<skill>` in a skill means that skill's directory, \
 `~/.agents/skills/<skill name>`."""
+
+
+def wilson(passed, total, z=1.96):
+    """Wilson 95% score interval (low, high) for passed/total; (0, 1) when total is 0."""
+    if total <= 0:
+        return 0.0, 1.0
+    p = passed / total
+    denom = 1 + z * z / total
+    centre = (p + z * z / (2 * total)) / denom
+    half = z * ((p * (1 - p) / total + z * z / (4 * total * total)) ** 0.5) / denom
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
+def rate(passed, total):
+    """'passed/total [low-high%]' with the Wilson 95% interval."""
+    low, high = wilson(passed, total)
+    return f"{passed}/{total} [{low * 100:.0f}-{high * 100:.0f}%]"
+
+
+def self_test():
+    problems = []
+
+    def expect(cond, what):
+        print(("ok   " if cond else "FAIL ") + what)
+        if not cond:
+            problems.append(what)
+
+    lo, hi = wilson(8, 10)
+    expect(abs(lo - 0.4902) < 0.001 and abs(hi - 0.9433) < 0.001, f"wilson 8/10 = {lo:.4f}-{hi:.4f}")
+    lo, hi = wilson(0, 3)
+    expect(lo == 0.0 and abs(hi - 0.5614) < 0.001, f"wilson 0/3 = {lo:.4f}-{hi:.4f}")
+    lo, hi = wilson(3, 3)
+    expect(abs(lo - 0.4385) < 0.001 and hi == 1.0, f"wilson 3/3 = {lo:.4f}-{hi:.4f}")
+    expect(wilson(0, 0) == (0.0, 1.0), "wilson 0/0 is the whole range")
+    expect(rate(8, 10) == "8/10 [49-94%]", f"rate format ({rate(8, 10)})")
+    sc = {"s1": {"id": "s1", "heldout": True}, "s2": {"id": "s2", "heldout": False}}
+    expect([s["id"] for s in select_scenarios(None, sc, heldout="only")] == ["s1"], "--heldout-only keeps tagged scenarios")
+    expect([s["id"] for s in select_scenarios(None, sc, heldout="exclude")] == ["s2"], "--exclude-heldout drops them")
+    expect(len(select_scenarios(None, sc)) == 2, "default keeps all")
+    try:
+        select_scenarios(None, {"s2": sc["s2"]}, heldout="only")
+        expect(False, "--heldout-only with no tagged scenario is a usage error")
+    except UsageError:
+        expect(True, "--heldout-only with no tagged scenario is a usage error")
+    m = HEADER_RE.match("<!-- skill under test: paperplane-x; heldout: true -->")
+    expect(bool(m) and m.group(1) == "paperplane-x" and "heldout: true" in m.group(2), "header with heldout tag parses")
+    m = HEADER_RE.match("<!-- skill under test: paperplane-x -->")
+    expect(bool(m) and not m.group(2), "header without tag parses")
+    print("self-test " + ("passed" if not problems else f"FAILED: {len(problems)} problem(s)"))
+    return 0 if not problems else 1
 
 
 class UsageError(Exception):
@@ -149,6 +200,9 @@ def frontmatter(text):
     return fields
 
 
+HEADER_RE = re.compile(r"^<!--\s*skill under test:\s*([^\s;]+)\s*((?:;[^>]*?)?)\s*-->")
+
+
 def load_scenarios():
     found = {}
     for path in sorted(SCENARIOS.glob("s*.md")):
@@ -157,13 +211,16 @@ def load_scenarios():
             continue
         text = path.read_text()
         first = text.splitlines()[0] if text else ""
-        sm = re.match(r"^<!--\s*skill under test:\s*(\S+)\s*-->", first)
+        sm = HEADER_RE.match(first)
         if not sm:
             raise UsageError(f"{path.relative_to(REPO)}: first line must be "
-                             "'<!-- skill under test: <name> -->'")
+                             "'<!-- skill under test: <name> -->' "
+                             "(optionally '<!-- skill under test: <name>; heldout: true -->')")
+        heldout = bool(re.search(r";\s*heldout:\s*true\b", sm.group(2)))
         body = text[len(first):].lstrip("\n")
         found[f"s{m.group(1)}"] = {"id": f"s{m.group(1)}", "num": int(m.group(1)),
-                                   "file": path, "skill": sm.group(1), "body": body}
+                                   "file": path, "skill": sm.group(1), "body": body,
+                                   "heldout": heldout}
     return found
 
 
@@ -396,7 +453,7 @@ def summary_table(scenario_results, trigger_results, ctx, wall):
         passed = sum(r["pass"] for r in runs)
         failures += len(runs) - passed
         reasons = "; ".join(f"rep{r['rep']}: {fail_reason(r)}" for r in runs if not r["pass"])
-        rows.append(f"| {sid} | {passed}/{len(runs)} | {cell(reasons)} |")
+        rows.append(f"| {sid} | {rate(passed, len(runs))} | {cell(reasons)} |")
     if trigger_results:
         for num in sorted(ctx["expected"]):
             runs = sorted(trigger_results, key=lambda r: r["rep"])
@@ -404,13 +461,21 @@ def summary_table(scenario_results, trigger_results, ctx, wall):
             passed = sum(o["pass"] for _, o in outcomes)
             failures += len(outcomes) - passed
             reasons = "; ".join(f"rep{rep}: {o['reason']}" for rep, o in outcomes if not o["pass"])
-            rows.append(f"| trigger #{num} ({ctx['expected'][num]}) | {passed}/{len(outcomes)} "
+            rows.append(f"| trigger #{num} ({ctx['expected'][num]}) | {rate(passed, len(outcomes))} "
                         f"| {cell(reasons)} |")
     cost = sum(r["cost_usd"] for r in scenario_results + trigger_results)
+    if scenario_results:
+        total_pass = sum(r["pass"] for r in scenario_results)
+        rows.append(f"| **all scenarios** | {rate(total_pass, len(scenario_results))} | |")
+        for label, flag in (("held-out", True), ("not held-out", False)):
+            sub = [r for r in scenario_results if (r["scenario"] in ctx["heldout_ids"]) == flag]
+            if sub and len(sub) != len(scenario_results):
+                rows.append(f"| **{label}** | {rate(sum(r['pass'] for r in sub), len(sub))} | |")
     head = [f"# Eval summary {ctx['stamp']}", "",
             f"- Skills: {'none (--no-skills)' if ctx['no_skills'] else ctx['source'].label()}",
             f"- Model: {ctx['model'] or 'claude default'} · judge: {ctx['judge_model'] or 'claude default'}"
             f" · checks: {'on' if ctx['checks'] else 'off (--no-checks)'}",
+            "- Intervals are Wilson 95%; with n <= 5 a cell is anecdotal.",
             f"- Wall time: {wall:.0f}s · reported cost: ${cost:.2f}",
             f"- Raw answers and judgements: {ctx['out']}", ""]
     return "\n".join(head + rows) + "\n", failures
@@ -431,8 +496,14 @@ def parse_args(argv):
     parser.add_argument("--no-checks", action="store_true", help="skip the regex checks in checks.py")
     parser.add_argument("--out", default=str(TESTS / "eval" / "out"), help="output directory")
     parser.add_argument("--trigger", action="store_true", help="run the triggering test")
+    parser.add_argument("--heldout-only", action="store_true",
+                        help="run only scenarios tagged 'heldout: true' (never tune skill wording on these)")
+    parser.add_argument("--exclude-heldout", action="store_true", help="skip scenarios tagged 'heldout: true'")
+    parser.add_argument("--self-test", action="store_true", help="test the helpers; call no model")
     parser.add_argument("--dry-run", action="store_true", help="print prompts; call nothing")
     args = parser.parse_args(argv)
+    if args.heldout_only and args.exclude_heldout:
+        parser.error("--heldout-only and --exclude-heldout are exclusive")
     if args.reps < 1 or args.jobs < 1:
         parser.error("--reps and --jobs must be at least 1")
     if args.no_skills and (args.skill_ref or args.trigger):
@@ -440,7 +511,19 @@ def parse_args(argv):
     return args
 
 
-def select_scenarios(spec, available):
+def select_scenarios(spec, available, heldout=None):
+    """heldout: None keeps all, 'only' keeps tagged scenarios, 'exclude' drops them."""
+    chosen = _select(spec, available)
+    if heldout == "only":
+        chosen = [s for s in chosen if s.get("heldout")]
+        if not chosen:
+            raise UsageError("--heldout-only: no selected scenario is tagged 'heldout: true'")
+    elif heldout == "exclude":
+        chosen = [s for s in chosen if not s.get("heldout")]
+    return chosen
+
+
+def _select(spec, available):
     if spec is None or spec == "all":
         return [available[k] for k in sorted(available, key=lambda s: int(s[1:]))]
     chosen = []
@@ -460,13 +543,16 @@ def select_scenarios(spec, available):
 
 def main(argv):
     args = parse_args(argv)
+    if args.self_test:
+        return self_test()
     source = SkillSource(args.skill_ref)
     available = load_scenarios()
     criteria = load_pass_criteria()
     if args.scenarios is None and args.trigger:
         scenarios = []
     else:
-        scenarios = select_scenarios(args.scenarios, available)
+        scenarios = select_scenarios(args.scenarios, available,
+                                     "only" if args.heldout_only else "exclude" if args.exclude_heldout else None)
     for s in scenarios:
         if s["id"] not in criteria:
             raise UsageError(f"no pass-criteria row for {s['id'].upper()} in tests/README.md")
@@ -520,7 +606,8 @@ def main(argv):
     ctx = {"out": out, "model": args.model, "judge_model": args.judge_model or args.model,
            "no_skills": args.no_skills, "criteria": criteria, "expected": expected,
            "checks": not args.no_checks,
-           "workdir": workdir, "source": source, "stamp": stamp}
+           "workdir": workdir, "source": source, "stamp": stamp,
+           "heldout_ids": {s["id"] for s in available.values() if s.get("heldout")}}
     calls = len(scenarios) * args.reps * 2 + (args.reps if args.trigger else 0)
     log(f"{len(jobs)} run(s), {calls} claude call(s), {args.jobs} at a time; output in {out}")
 

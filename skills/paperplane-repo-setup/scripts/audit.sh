@@ -35,7 +35,9 @@ err=$(mktemp); trap 'rm -f "$err"' EXIT
 api() { gh api "$@" 2>"$err"; }
 lasterr() { grep -m1 . "$err" | cut -c1-160; }
 raw() { api -H 'Accept: application/vnd.github.raw' "repos/$repo/contents/$1?ref=$ref"; }
-has() { printf '%s\n' "$1" | grep -qxF -- "$2"; }
+# has <newline list> <line>: exact whole-line match. A case pattern, not a pipe: grep -q exiting early
+# SIGPIPEs printf, and pipefail turns that into a false "no" for lists over ~64KB.
+has() { case $'\n'"$1"$'\n' in *$'\n'"$2"$'\n'*) return 0 ;; *) return 1 ;; esac; }
 nocomments() { sed -e 's/^[[:space:]]*#.*//' -e 's/[[:space:]]#.*//'; }
 
 # Repo settings and default branch. An unreadable repo stops the audit.
@@ -67,9 +69,11 @@ setting allow_rebase_merge "$rebase" false
 setting delete_branch_on_merge "$delete_on_merge" true
 setting allow_auto_merge "$auto_merge" true
 
-if rulesets=$(api "repos/$repo/rulesets" --jq '.[].name'); then
-  if has "$rulesets" protect-develop-uat-main; then report PASS ruleset "protect-develop-uat-main"
-  else report FAIL ruleset "protect-develop-uat-main not found (have: $(echo "${rulesets:-none}" | paste -sd, -))"; fi
+if rulesets=$(api "repos/$repo/rulesets" --jq '.[] | "\(.name) \(.enforcement // "unknown")"'); then
+  if has "$rulesets" "protect-develop-uat-main active"; then report PASS ruleset "protect-develop-uat-main (active)"
+  elif en=$(printf '%s\n' "$rulesets" | sed -n 's/^protect-develop-uat-main //p' | head -1) && [ -n "$en" ]; then
+    report FAIL ruleset "protect-develop-uat-main exists but enforcement is '$en', want active"
+  else report FAIL ruleset "protect-develop-uat-main not found (have: $(printf '%s\n' "${rulesets:-none}" | sed 's/ [a-z]*$//' | paste -sd, -))"; fi
 else
   report WARN ruleset "cannot list rulesets: $(lasterr)"
 fi
@@ -103,11 +107,15 @@ other=$(printf '%s\n' "$root" | grep -xE 'package-lock\.json|yarn\.lock|bun\.loc
 if [ -z "$other" ]; then report PASS pnpm-only "no npm/yarn/bun lockfile $on"
 else report FAIL pnpm-only "remove $other $on (pnpm only)"; fi
 
-# CODEOWNERS: every rule names at least two @owners.
-if ! has "$dotgithub" CODEOWNERS; then
-  report FAIL codeowners "missing .github/CODEOWNERS $on"
-elif ! owners=$(raw .github/CODEOWNERS); then
-  report FAIL codeowners "cannot read .github/CODEOWNERS: $(lasterr)"
+# CODEOWNERS (GitHub reads .github/, the root or docs/): every rule names at least two @owners.
+cpath=""
+if has "$dotgithub" CODEOWNERS; then cpath=.github/CODEOWNERS
+elif has "$root" CODEOWNERS; then cpath=CODEOWNERS
+elif has "$root" docs && docs=$(api "repos/$repo/contents/docs?ref=$ref" --jq '.[].name') && has "$docs" CODEOWNERS; then cpath=docs/CODEOWNERS; fi
+if [ -z "$cpath" ]; then
+  report FAIL codeowners "missing .github/CODEOWNERS (or CODEOWNERS, docs/CODEOWNERS) $on"
+elif ! owners=$(raw "$cpath"); then
+  report FAIL codeowners "cannot read $cpath: $(lasterr)"
 else
   rules=0 thin=""
   while read -r pattern rest; do
@@ -116,9 +124,9 @@ else
     n=$(printf '%s\n' "$rest" | tr -s ' \t' '\n\n' | grep -c '^@')
     [ "$n" -ge 2 ] || thin="$thin $pattern"
   done < <(printf '%s\n' "$owners" | nocomments)
-  if [ "$rules" -eq 0 ]; then report FAIL codeowners "no rules in .github/CODEOWNERS"
+  if [ "$rules" -eq 0 ]; then report FAIL codeowners "no rules in $cpath"
   elif [ -n "$thin" ]; then report FAIL codeowners "fewer than two @owners for:$thin"
-  else report PASS codeowners "$rules rule(s), each with two or more @owners"; fi
+  else report PASS codeowners "$cpath: $rules rule(s), each with two or more @owners"; fi
 fi
 
 # Standard CI workflow.
@@ -127,14 +135,39 @@ if ! wf=$(raw .github/workflows/standard.yml); then
   if grep -q 'HTTP 404' "$err"; then report FAIL standard-workflow "missing .github/workflows/standard.yml $on"
   else report FAIL standard-workflow "cannot read .github/workflows/standard.yml $on: $(lasterr)"; fi
 else
-  wf=$(printf '%s\n' "$wf" | nocomments)
+  # Two awk passes, no extra tools: strip YAML comments (a # outside quotes, at line start or after a space), then
+  # rfr=1 when ready_for_review is in the on: > pull_request: > types: value, conc=1 when the top-level
+  # concurrency: (not a job's) has cancel-in-progress: true. Prints "rfr=<0|1> conc=<0|1>".
+  wf=$(printf '%s\n' "$wf" | tr -d '\r' | awk '{ q = ""; o = ""
+    for (i = 1; i <= length($0); i++) { c = substr($0, i, 1)
+      if (q != "") { if (c == q) q = "" }
+      else if (c == "\"" || c == "\047") q = c
+      else if (c == "#" && (i == 1 || substr($0, i - 1, 1) ~ /[ \t]/)) break
+      o = o c }
+    print o }')
+  flags=$(printf '%s\n' "$wf" | awk '
+    function indent(l) { match(l, /^ */); return RLENGTH }
+    { line = $0 }
+    line ~ /^[[:space:]]*$/ { next }
+    { ind = indent(line); t = line; sub(/^ +/, "", t) }
+    ind == 0 { top = t; sub(/:.*/, "", top); gsub(/["\047]/, "", top); pr = 0; ty = 0
+      if (top == "concurrency" && t ~ /cancel-in-progress:[ ]*true([ ,}]|$)/) conc = 1 }
+    top == "on" && ind > 0 {
+      if (pr && ind <= prind) pr = 0
+      if (ty && ind <= tyind && t !~ /^-/) ty = 0
+      if (t ~ /^pull_request:/) { pr = 1; prind = ind; ty = 0; if (t ~ /ready_for_review/) rfr = 1; next }
+      if (pr && t ~ /^types:/) { ty = 1; tyind = ind; if (t ~ /ready_for_review/) rfr = 1; next }
+      if (ty && t ~ /ready_for_review/) rfr = 1
+    }
+    top == "concurrency" && ind > 0 && t ~ /^cancel-in-progress:[ ]*["\047]?true["\047]?[ ]*$/ { conc = 1 }
+    END { printf "rfr=%d conc=%d\n", rfr, conc }')
   uses=$(printf '%s\n' "$wf" | grep -oE 'uses:[[:space:]]*["'\'']?[^"'\''[:space:]]*standard-checks\.yml[^"'\''[:space:]]*' | sed -E 's/uses:[[:space:]]*["'\'']?//' | head -1)
   if [ "$uses" = "$want" ]; then report PASS standard-workflow "calls $want"
   elif [ -n "$uses" ]; then report FAIL standard-workflow "calls $uses, want $want"
   else report FAIL standard-workflow "does not call $want"; fi
-  if printf '%s\n' "$wf" | grep -qw ready_for_review; then report PASS standard-ready_for_review "pull_request types include ready_for_review"
+  if [ "${flags#rfr=1}" != "$flags" ]; then report PASS standard-ready_for_review "pull_request types include ready_for_review"
   else report WARN standard-ready_for_review "pull_request types lack ready_for_review; draft PRs marked ready skip CI (template change pending)"; fi
-  if printf '%s\n' "$wf" | grep -qE '^concurrency:' && printf '%s\n' "$wf" | grep -qE 'cancel-in-progress:[[:space:]]*true'; then report PASS standard-concurrency "cancels the previous run of the same PR"
+  if [ "${flags% conc=1}" != "$flags" ]; then report PASS standard-concurrency "cancels the previous run of the same PR"
   else report WARN standard-concurrency "no 'concurrency' with cancel-in-progress: true; every push bills a full run (replace with the template)"; fi
   if [ "$app" = yes ]; then
     if printf '%s\n' "$wf" | grep -qE '^[[:space:]]*mobile:[[:space:]]*true([[:space:]]|$)'; then report PASS standard-mobile "mobile: true"
