@@ -37,11 +37,31 @@ if git ls-files --error-unmatch pnpm-lock.yaml >/dev/null 2>&1 || printf '%s\n' 
 fi
 
 # Every commit counts here: a .env added and removed again is still in the pushed history.
-envs=$(git log --name-only --diff-filter=d --format= "$base..HEAD" | grep -E '(^|/)\.env(\..+)?$' | grep -vE '\.env\.example$' | sort -u || true)
+envs=$(git log --name-only --diff-filter=d --format= "$base..HEAD" | grep -E '(^|/)\.env(\..+)?$' | grep -vE '(^|/)\.env(\.(example|sample|template|dist)|\..+\.example)$' | sort -u || true)
 [ -n "$envs" ] && block ".env file in the commits: $(echo $envs)"
 
-built=$(printf '%s\n' "$files" | grep -E '(^|/)(dist|coverage|build)/' || true)
-[ -n "$built" ] && block "build output in the commits: $(echo $built | cut -c1-200)"
+# Build output only counts at the repo root or next to a package.json (src/build/ is source).
+is_build() { # is_build <path>
+  local -a parts; local j=0 pre=""
+  IFS=/ read -r -a parts <<EOF
+$1
+EOF
+  while [ "$j" -lt $((${#parts[@]}-1)) ]; do
+    case "${parts[j]}" in
+      dist|coverage|build)
+        { [ -z "$pre" ] || git cat-file -e "HEAD:${pre}package.json" 2>/dev/null; } && return 0 ;;
+    esac
+    pre="$pre${parts[j]}/"; j=$((j+1))
+  done
+  return 1
+}
+built=""
+while IFS= read -r f; do
+  [ -n "$f" ] && is_build "$f" && built="$built $f"
+done <<EOF
+$files
+EOF
+[ -n "$built" ] && block "build output in the commits: $(echo "$built" | cut -c1-200)"
 
 if command -v gitleaks >/dev/null 2>&1; then
   if ! gitleaks git --no-banner --redact --log-opts="$base..HEAD" . >/tmp/pre-push-gitleaks.$$ 2>&1; then
