@@ -1,6 +1,8 @@
 name: validate
 
 on:
+  # No path filter on purpose: pull requests run this for every change (skills, scripts, hooks,
+  # tests and the workflows themselves), so a change to any of them is always validated.
   pull_request:
   push:
     branches: [main]
@@ -13,13 +15,15 @@ jobs:
     name: skills are valid and scripts work
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4 # pin to SHA via dependabot
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v6 # pin to SHA via dependabot
 
-      - uses: oven-sh/setup-bun@v2 # runs the omp adapter tests in test-hooks.sh
+      - uses: oven-sh/setup-bun@v2 # pin to SHA via dependabot; runs the omp adapter tests in test-hooks.sh
 
       - name: Validate every skill against the Agent Skills spec
+        # Not pinned: the repo's docs name no tag or commit of agentskills/agentskills to pin to, and
+        # a SHA cannot be looked up offline. Pin it here once someone picks a known-good commit.
         run: |
           for s in skills/*/SKILL.md; do
             uvx --from "git+https://github.com/agentskills/agentskills#subdirectory=skills-ref" skills-ref validate "$(dirname "$s")"
@@ -31,6 +35,8 @@ jobs:
             tests/scripts/*.sh tests/drift/*.sh
           python3 -m py_compile tests/eval/run.py tests/eval/checks.py
           python3 tests/eval/checks.py --self-test
+          python3 tests/eval/label.py --self-test
+          python3 tests/eval/run.py --self-test
 
       - name: README version matches the newest CHANGELOG entry
         run: |
@@ -43,8 +49,13 @@ jobs:
         env:
           GITLEAKS_VERSION: 8.30.1
         run: |
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin gitleaks
+          V=$GITLEAKS_VERSION
+          dir=$(mktemp -d)
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${V}"
+          curl -sSfL -o "$dir/gitleaks_${V}_linux_x64.tar.gz" "$base/gitleaks_${V}_linux_x64.tar.gz"
+          curl -sSfL -o "$dir/gitleaks_${V}_checksums.txt" "$base/gitleaks_${V}_checksums.txt"
+          (cd "$dir" && sha256sum -c --ignore-missing "gitleaks_${V}_checksums.txt")
+          sudo tar -xzf "$dir/gitleaks_${V}_linux_x64.tar.gz" -C /usr/local/bin gitleaks
           gitleaks version
 
       - name: Test skill scripts
@@ -56,3 +67,25 @@ jobs:
         run: |
           python3 -m py_compile tests/eval/sandbox/run.py
           python3 tests/eval/sandbox/run.py --self-check
+
+  macos:
+    name: scripts work on macOS (bash 3.2, BSD tools)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4 # pin to SHA via dependabot
+
+      - name: Syntax-check every script with the system bash
+        run: |
+          /bin/bash --version | head -1
+          for f in skills/*/scripts/*.sh skills/*/hooks/*.sh skills/paperplane-shipping-changes/hooks/git-pre-push \
+                   tests/scripts/*.sh tests/drift/*.sh; do
+            /bin/bash -n "$f" || { echo "::error file=$f::bash -n failed"; exit 1; }
+          done
+
+      - name: Install gitleaks
+        run: brew install gitleaks
+
+      - name: Test skill scripts
+        run: |
+          git config --global init.defaultBranch develop
+          bash tests/scripts/run.sh
