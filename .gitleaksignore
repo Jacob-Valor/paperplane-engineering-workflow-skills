@@ -1,0 +1,4 @@
+# One reviewed false positive, pinned to its exact commit, file, rule and line.
+# tests/scripts/test-drift.sh line 137 in 9bca117 read `GH_TOKEN= DRIFT_ALLOW_SKIP=1` (an EMPTY token followed
+# by another env assignment) as a key. No credential was ever there; the line was reordered afterwards.
+9bca11730afa843bc37a7f019db77344aaec0bc0:tests/scripts/test-drift.sh:generic-api-key:137

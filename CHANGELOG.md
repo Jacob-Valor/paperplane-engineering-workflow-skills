@@ -2,6 +2,14 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.12
+
+### Security
+- `pre-push.sh` wrote gitleaks output to `/tmp/pre-push-gitleaks.$$`, a guessable path that another local user could pre-create as a symlink to make the hook overwrite a file of the person pushing. It now uses `mktemp`. File names in the "second lockfile" and ".env file" messages are no longer expanded unquoted (a name containing `*` was globbed against the working directory).
+- CI: the repo had no secret scan of its own (gitleaks was only installed for the tests). `validate` now scans the working tree and every commit. Its checkout fetches full history.
+- CI: `actions/checkout`, `upload-artifact`, `setup-uv` and `setup-bun` are pinned to commit SHAs, and `skills-ref` is installed from a pinned commit of agentskills/agentskills instead of the default branch. Dependabot keeps the pins current through the `# vN` comments.
+- Test fixture: `tests/scripts/test-drift.sh` line 137 (`GH_TOKEN= DRIFT_ALLOW_SKIP=1`, an empty token) was reported as a key. Reordered the arguments. The same finding in history (commit 9bca117, no credential ever present) is covered by one pinned `.gitleaksignore` entry.
+
 ## v2026.10.15.10
 
 ### Fixed

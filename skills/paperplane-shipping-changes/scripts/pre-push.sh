@@ -33,12 +33,12 @@ files=$(git diff --name-only --diff-filter=d "$base...HEAD")
 
 if git ls-files --error-unmatch pnpm-lock.yaml >/dev/null 2>&1 || printf '%s\n' "$files" | grep -qx 'pnpm-lock.yaml'; then
   bad=$(printf '%s\n' "$files" | grep -E '(^|/)(package-lock\.json|yarn\.lock|bun\.lockb?)$' || true)
-  [ -n "$bad" ] && block "second lockfile in this pnpm repo: $(echo $bad)"
+  [ -n "$bad" ] && block "second lockfile in this pnpm repo: $(printf '%s\n' "$bad" | tr '\n' ' ')"
 fi
 
 # Every commit counts here: a .env added and removed again is still in the pushed history.
 envs=$(git log --name-only --diff-filter=d --format= "$base..HEAD" | grep -E '(^|/)\.env(\..+)?$' | grep -vE '(^|/)\.env(\.(example|sample|template|dist)|\..+\.example)$' | sort -u || true)
-[ -n "$envs" ] && block ".env file in the commits: $(echo $envs)"
+[ -n "$envs" ] && block ".env file in the commits: $(printf '%s\n' "$envs" | tr '\n' ' ')"
 
 # Build output only counts at the repo root or next to a package.json (src/build/ is source).
 is_build() { # is_build <path>
@@ -64,13 +64,15 @@ EOF
 [ -n "$built" ] && block "build output in the commits: $(echo "$built" | cut -c1-200)"
 
 if command -v gitleaks >/dev/null 2>&1; then
-  if ! gitleaks git --no-banner --redact --log-opts="$base..HEAD" . >/tmp/pre-push-gitleaks.$$ 2>&1; then
-    grep -E 'leaks found|Finding|RuleID|File|Commit' /tmp/pre-push-gitleaks.$$ | head -20
+  # mktemp, not a name built from $$: a guessable path in /tmp can be pre-created as a symlink
+  gl_out=$(mktemp "${TMPDIR:-/tmp}/pre-push-gitleaks.XXXXXX") || exit 1
+  if ! gitleaks git --no-banner --redact --log-opts="$base..HEAD" . >"$gl_out" 2>&1; then
+    grep -E 'leaks found|Finding|RuleID|File|Commit' "$gl_out" | head -20
     block "gitleaks found a secret; follow paperplane-secret-incidents, never repeat the value"
   else
     echo "gitleaks: no leaks in $base..HEAD"
   fi
-  rm -f /tmp/pre-push-gitleaks.$$
+  rm -f "$gl_out"
 else
   [ "$fail" -eq 0 ] && { echo "gitleaks not installed: read the full 'git diff $base...HEAD' for keys before pushing"; exit 3; }
 fi
