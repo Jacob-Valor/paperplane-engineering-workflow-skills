@@ -88,7 +88,7 @@ if ! PATH=/usr/bin:/bin command -v gitleaks >/dev/null 2>&1; then
 fi
 if command -v gitleaks >/dev/null 2>&1; then
   git switch -qc fix/leak
-  printf 'aws_secret_access_key = %s\n' "$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 40)" > k.ts
+  printf 'token = ghp_%s\n' "$(head -c 800 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c 36)" > k.ts
   git add k.ts; git commit -qm leak; git switch -q feature/x
   expect "git hook: secret on another branch blocked" 1 git push -q origin fix/leak
 fi

@@ -71,6 +71,7 @@ jobs:
   macos:
     name: scripts work on macOS (bash 3.2, BSD tools)
     runs-on: macos-latest
+    timeout-minutes: 20 # a hung test must fail the job, not run for hours
     steps:
       - uses: actions/checkout@v4 # pin to SHA via dependabot
 

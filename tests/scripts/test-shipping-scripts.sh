@@ -65,8 +65,9 @@ git switch -qc chore/cleanup; git rm -rq dist package-lock.json; git commit -qm 
 expect "pre-push allows deleting a lockfile and build output" "$clean" bash "$S/pre-push.sh"
 git switch -q fix/x
 if command -v gitleaks >/dev/null 2>&1; then
-  # token-shaped fixture: gitleaks missed the old random AWS-style value in 1 of 60 local runs, this one in 0 of 60
-  printf 'token = ghp_%s\n' "$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 36)" > k.ts
+  # token-shaped fixture: gitleaks missed the old random AWS-style value in 1 of 60 local runs, this one in 0 of 60;
+  # bounded input, because an unbounded tr on /dev/urandom hung on the macOS runner
+  printf 'token = ghp_%s\n' "$(head -c 800 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c 36)" > k.ts
   git add k.ts; git commit -qm leak
   expect "pre-push blocks a secret" 1 bash "$S/pre-push.sh"
   git reset -q --hard HEAD~1
