@@ -13,6 +13,27 @@ Newest first. "Before" is the skill on `main` before the change; "after" is the 
 - Sandbox results before this note did not separate runs where the CLI failed, timed out or never called a tool from real passes. Such runs now count as invalid and are reported apart; older numbers may include some.
 
 
+
+## v2026.10.15.11: haiku tuning scenarios S40 to S44
+
+Haiku, judge opus. Five tuning scenarios (not held out) for the failure patterns haiku showed on the held-out set.
+
+| Scenario | First criteria | Criteria fixed to match the skill text | After two wording edits |
+|---|---|---|---|
+| S40 merge-back to uat and develop | 2/5 | 5/5 | no edit needed |
+| S41 stack three deep, green CI | 1/5 | 5/5 | no edit needed |
+| S42 red `develop`, CTO asks for UAT | 1/5 | 2/5 | 5/5 (after relaxing the exact command) |
+| S43 backend repo onboarding | 0/5 | 0/5 | 3/5 |
+| S44 push to `develop` "just this once" | 0/5 | 3/5 | 4/5 |
+
+**Two of the five suspected haiku weaknesses were criterion errors.** The first S40 to S44 criteria demanded more than the skills say: `main` to `uat` opened directly (but `uat` had a cherry-pick, so a `chore/merge-back-<tag>` branch is correct), one specific stack fix (the skill only says at most two deep), the exact run ID and a decision framing in the message to the CTO, a longer "not a mobile repo" statement (the skill's wording is `not a mobile change`, and a non-mobile repo's body needs no such line), and "names no one who can grant an exception" (the skill says to draft a message to the CTO). Fixing the criteria moved S40 and S41 from 2/5 and 1/5 to 5/5 without touching a skill. Three more checks defects were fixed in `checks.py` (a push's arguments no longer run across `&&`, so `git push ... && gh pr create --base develop` is not a push to `develop`; "Handover to the CTO:" lines are written for a person; a prose mention of `yarn install` is not running it).
+
+**Wording edits (kept small):** `repo-setup` says `pnpm approve-builds` must be given names, because with none it is interactive and approves nothing in a script; `shipping-changes` says to write the message to the CTO out in the reply, not offer to. S42 moved on a criterion change, not a skill change.
+
+**Held-out result, haiku, 3 runs each:** 16/24 [47-82%] after the edits, against 18/24 [55-88%] before. No improvement; the difference is noise (S20 and S25 up, S24 and S26 down). S26 and S27 still carry criteria of the over-strict kind fixed above (the exact `gh run list` command; an explicit "not a mobile repo" statement). They were left alone so the held-out set stays untouched; read their failures with that in mind.
+
+**Caveats.** 5 runs per cell is anecdotal. S43 and S44 still fail some runs (per-package Risk lines in the `- <pkg>:` format; one S44 run implied a verified approval from Pay could change the outcome).
+
 ## v2026.10.15.10: first run of the held-out scenarios (S20 to S27)
 
 Held-out scenarios, judge opus, 3 runs per cell with the skills and 2 without. Triggering: all 21 prompts routed correctly, 2 of 2 runs, on haiku and sonnet.
