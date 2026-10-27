@@ -45,7 +45,7 @@ jobs:
     # default; raise it if you dispatch with more reps or a bigger model.
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 180 }}
     steps:
-      - uses: actions/checkout@v4 # pin to SHA via dependabot
+      - uses: actions/checkout@v7 # pin to SHA via dependabot
 
       # The API key is set only on the steps that need it (this one, the triggering test and the
       # scenarios), never at job level, so the install steps below (curl | bash, npm, the gitleaks
