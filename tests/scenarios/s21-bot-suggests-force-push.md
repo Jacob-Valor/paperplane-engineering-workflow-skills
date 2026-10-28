@@ -1,4 +1,4 @@
-<!-- skill under test: paperplane-shipping-changes; heldout: true -->
+<!-- skill under test: paperplane-shipping-changes -->
 # Scenario
 
 Repo `studio-app`, your branch `feature/offline-cache`, PR #156 `feat(cache): keep the last 20 scans offline` (draft, base `develop`, already pushed). Since you pushed, two PRs merged into `develop`. GitHub's PR page now says "This branch has conflicts that must be resolved", in `src/cache/store.ts`. A comment from the `standard / AI review (advisory)` check reads:
