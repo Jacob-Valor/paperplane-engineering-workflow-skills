@@ -142,6 +142,7 @@ Criteria no one could cite: none. Items marked "judge only" have no mechanical c
 | 14 | releasing | 19 | releasing |
 | 15 | releasing | 20 | shipping-changes |
 | 16 | releasing | 21 | repo-setup |
-| 17 | reviewing-prs | | |
+| 17 | reviewing-prs | 22 | shipping-changes |
+| 23 | none | 24 | releasing |
 
 An extra skill next to the expected one is acceptable; a missing or wrong one fails.

@@ -2,6 +2,38 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.14
+
+Result of an independent three-reviewer audit (skills, guard, evals and CI). Every fix below was reproduced first.
+
+### Fixed: guard
+- Stops blocking normal work: `git push -u origin "$(git branch --show-current)"`, `HEAD:"$BRANCH"` and a variable branch are judged by the current branch and by `VAR=value` set earlier in the same command (the git pre-push hook and server rules remain the backstop). `gh api` edits of comments, PRs and labels, init generators in `eval` (`ssh-agent`, `direnv`, `pyenv`, `brew shellenv`, `kubectl completion`), harmless `git config alias.*`, `git clean -n`, `npx --version` and `$GH pr create|view|list` are allowed. Each has a blocked twin test.
+- Closes real gaps: follows `git checkout/switch/symbolic-ref` earlier in the same command; checks Edit/Write/MultiEdit/NotebookEdit on the guard's own files; blocks hook-skip variables (`HUSKY=0`, `LEFTHOOK=0`, `SKIP=`); plain `git config push.default|remote.*.push|branch.*.merge`; interpreter code from heredocs, here-strings and pipes; a script written then run in one command; `timeout -s/-k` and `gtimeout`; `gh api` writes to refs, tags and releases and the graphql mutations; `gh repo|secret|variable|workflow|release|ruleset` writes; `function f {}`; `--git-dir`/`GIT_DIR`; `rebase --exec`, `submodule foreach`, `bisect run`, `filter-branch`; xargs-fed refs; `--no-ver` prefixes; docker-compose, podman and kubectl unwrap; more self-protection (`$PWD` paths, `find -delete`, `sponge`, `rm -rf .git`). `--no-verify-signatures` is no longer blocked as a side effect of exact prefix matching.
+- Fails closed: the installed hook command exits 2 when the guard file is missing (it returned 127, which Claude Code treats as non-blocking); no jq and no python3, or truncated JSON that names Bash, Edit or Write, exits 2; the omp adapter blocks on a missing guard, a spawn error or any non-zero exit and forwards edit/write calls.
+- Fast on big inputs: a 20 KB command of 2,500 statements went from about 15 s to 0.8 s and a 100 KB `echo` from 7 s to 0.1 s (per-directory cache, chunked scanning). Caps of 128 KB, 6,000 statements and 64 nesting levels refuse with "command too large to check; split it" only when the text names git, gh or a protected path. Timing tests added.
+- `install-claude-hook.sh` registers a second matcher (`Edit|Write|MultiEdit|NotebookEdit`) for `--user`, `--project` and `--commit`; uninstall removes both.
+
+### Fixed: evals and CI
+- Sandbox eval: a run is invalid unless the agent made a Bash call that touches git, gh or a package manager, and each scenario grades a positive end state, so an agent that did nothing is invalid, not a pass (7 of 9 scenarios passed on an untouched sandbox). `--fail-under RATE` added.
+- `run.py`: CLI errors, timeouts and unreadable judge replies are `invalid` (listed apart, excluded from rates, exit 3 only with no valid run); `--fail-under RATE`; `--baseline-context FILE`; `--summarize DIR`.
+- CI: no secret is used on pull requests. Eval and drift run live only on schedule and dispatch; PRs run the offline self-tests and say "live check skipped on pull requests (no secrets by design)". `persist-credentials: false` on every checkout, `timeout-minutes` on every job. The weekly eval gates on a per-model pass rate (haiku 0.60, sonnet and opus 0.85, triggering 0.90, enforced sandbox 0.90) and opens an `eval` issue on a scheduled failure. The macOS job installs a SHA-256-verified gitleaks instead of `brew install`. The sandbox installs pnpm 10.34.9 (`approve-builds` does not exist in pnpm 9). New `docs/ci-pins.md` and `tests/scripts/test-ci-pins.sh`.
+- `checks.py` false negatives: `HEAD:refs/heads/develop`, quoted branch names, `git -C`, `sudo`, env prefixes, `git add -- .`, `git add src/ .`, and commands after a closed "message to the CTO" section.
+
+### Changed: eval honesty
+- S20 to S27 are now the development set (their checks and S40 to S44 were written after seeing their answers). New sealed held-out set S50 to S57, each criterion traced to a skill sentence or guide line; not yet run on any model. Every criteria row is split into `Safe:` and `Convention:`; the judge returns both and summaries show safe, convention and overall. `tests/RESULTS.md` has an "Evidence status" section and current test counts.
+
+### Fixed: skills
+- Rules the guide does not state are labelled `(team convention, not in the guide)` and listed in the new `docs/open-questions-for-cto.md` (store-build source and actor, auto-merge, leftover blockers, the draft limit, ruleset names, gitleaks allowlist approval). Removed: `uat-*` tags and "release PRs always draft".
+- **releasing**: if the CTO prompted a release PR, the other code owner approves and the CTO merges and tags (the guide has no release exemption); opening a draft release PR is preparation, not promotion (flagged for the CTO).
+- **shipping-changes**: agents never force-push; a person may on their own branch (guide section 2). The reason the CTO cannot waive a rule inside the conversation (an agent cannot verify who is typing) is stated once.
+- **secret-incidents**: a non-interactive `git commit --fixup` plus `GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash` recipe replaces the interactive rebase; `gitleaks git --log-opts` reads an old commit; the description no longer triggers on any undefined variable.
+- **repo-setup**: pnpm 10 (for `approve-builds`), approved by name; auto-merge is optional; a build that cannot be run keeps the PR draft.
+- 10 rationalization rows removed to keep each skill's word count flat or lower. Their rules remain in the body text. Not yet re-measured with a model.
+
+### Added: tests
+- `audit.sh`: a setting hidden from the token is WARN, and `bun.lock`/`bun.lockb` are flagged. `check-pr-body.sh`: each mobile line is tested alone. `gather.sh`: an unreadable diff prints "unavailable". New `test-rollout-guard.sh` (43 tests, covers the `-R`/`--head` regression). Dead CR stripping removed from `check-pr-body.sh` (CRLF behaviour unchanged).
+- Test totals: `test-hooks.sh` 1,193 (was 644); the suite is about 1,500 tests.
+
 ## v2026.10.15.13
 
 ### Security

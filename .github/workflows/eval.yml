@@ -104,7 +104,7 @@ jobs:
 
       - name: Install pnpm and gitleaks (sandbox)
         run: |
-          npm install -g pnpm@9.15.9
+          npm install -g pnpm@10.34.9
           V=$GITLEAKS_VERSION
           dir=$(mktemp -d)
           base="https://github.com/gitleaks/gitleaks/releases/download/v${V}"
