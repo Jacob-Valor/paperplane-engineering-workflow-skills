@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Adds (or removes) the paperplane guard as a Claude Code PreToolUse hook on Bash.
+# Adds (or removes) the paperplane guard as Claude Code PreToolUse hooks on Bash and on the file tools
+# (Edit|Write|MultiEdit|NotebookEdit, so the guard's own files cannot be rewritten that way).
 # Usage: bash hooks/install-claude-hook.sh [--project|--user|--commit] [--uninstall]
 #   --project (default) <repo root>/.claude/settings.local.json, this clone only
 #   --user              $HOME/.claude/settings.json, every repo on this machine
@@ -8,12 +9,13 @@
 #                       the omp adapter .omp/hooks/pre/paperplane-guard.ts (omp ignores Claude Code
 #                       hooks); commit all three files. Run it again to refresh the copies.
 # Keeps every other setting. Running it again does not add a second entry.
-# --uninstall removes only the paperplane guard entry (and the --commit copy).
+# The installed command fails closed: if the guard script is missing or moved it exits 2 (block).
+# --uninstall removes only the paperplane guard entries (and the --commit copy).
 # Exit codes: 0 done · 1 settings file unreadable or not writable ·
 #             2 usage error, not in a git repo, or neither jq nor python3
 set -uo pipefail
 
-usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; }
 scope=project
 uninstall=0
 for arg in "$@"; do
@@ -28,7 +30,10 @@ for arg in "$@"; do
 done
 
 guard="$(cd "$(dirname "$0")" && pwd)/claude-guard.sh"
-command="bash $(printf '%q' "$guard")"
+# Claude Code treats "command not found" (127) as non-blocking, so a moved guard would switch every
+# check off. The command checks the file itself and exits 2 (block) with a reason when it is gone.
+missing_msg='paperplane guard missing; refusing to run unchecked (re-run install-claude-hook.sh)'
+command="f=$(printf '%q' "$guard"); [ -f \"\$f\" ] || { echo \"$missing_msg: \$f\" >&2; exit 2; }; exec bash \"\$f\""
 
 if [ "$scope" = user ]; then
   [ -n "${HOME:-}" ] || { echo "HOME is not set"; exit 2; }
@@ -42,7 +47,7 @@ if [ "$scope" = commit ]; then
   vendored="$root/.claude/hooks/paperplane-guard.sh"
   omp_hook="$root/.omp/hooks/pre/paperplane-guard.ts"
   # shellcheck disable=SC2016  # Claude Code expands $CLAUDE_PROJECT_DIR when it runs the hook
-  command='bash "$CLAUDE_PROJECT_DIR/.claude/hooks/paperplane-guard.sh"'
+  command='f="$CLAUDE_PROJECT_DIR/.claude/hooks/paperplane-guard.sh"; [ -f "$f" ] || { echo "'"$missing_msg"': $f" >&2; exit 2; }; exec bash "$f"'
 fi
 
 if [ -s "$file" ]; then
@@ -66,7 +71,9 @@ def strip:
     | if .hooks == {} then del(.hooks) else . end
   else . end;
 if $uninstall == "1" then strip
-else strip | .hooks.PreToolUse += [{"matcher": "Bash", "hooks": [{"type": "command", "command": $cmd}]}]
+else strip | .hooks.PreToolUse += [
+  {"matcher": "Bash", "hooks": [{"type": "command", "command": $cmd}]},
+  {"matcher": "Edit|Write|MultiEdit|NotebookEdit", "hooks": [{"type": "command", "command": $cmd}]}]
 end'
 
 py_prog='
@@ -93,8 +100,9 @@ if isinstance(hooks, dict) and isinstance(hooks.get("PreToolUse"), list):
     if not hooks:
         del d["hooks"]
 if not uninstall:
-    d.setdefault("hooks", {}).setdefault("PreToolUse", []).append(
-        {"matcher": "Bash", "hooks": [{"type": "command", "command": cmd}]})
+    for m in ("Bash", "Edit|Write|MultiEdit|NotebookEdit"):
+        d.setdefault("hooks", {}).setdefault("PreToolUse", []).append(
+            {"matcher": m, "hooks": [{"type": "command", "command": cmd}]})
 print(json.dumps(d, indent=2))'
 
 if command -v jq >/dev/null 2>&1; then
@@ -128,5 +136,9 @@ else
   echo "restart Claude Code (or open /hooks) so it loads the hook"
 fi
 if [ "$scope" = commit ]; then
-  echo "commit all three files: git add .claude/settings.json .claude/hooks/paperplane-guard.sh .omp/hooks/pre/paperplane-guard.ts"
+  if [ "$uninstall" -eq 1 ]; then
+    echo "commit the removal: git add -A .claude .omp"
+  else
+    echo "commit all three files: git add .claude/settings.json .claude/hooks/paperplane-guard.sh .omp/hooks/pre/paperplane-guard.ts"
+  fi
 fi
