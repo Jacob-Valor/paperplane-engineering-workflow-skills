@@ -1,4 +1,4 @@
-<!-- skill under test: paperplane-shipping-changes; heldout: true -->
+<!-- skill under test: paperplane-shipping-changes -->
 # Scenario
 
 Repo `sanaam-api`, Friday 16:10. You are on the `develop` branch of Chenda's clone. `git status --short` prints:

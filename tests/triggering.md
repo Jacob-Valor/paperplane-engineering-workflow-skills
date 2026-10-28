@@ -25,3 +25,6 @@ All requests come from a developer working in the `paperplanehq` GitHub org.
 19. Release the app.
 20. Turn on auto-merge for my PR.
 21. Enable auto-merge in the repo settings.
+22. Revert PR #40 on develop.
+23. My app crashes on start because API_URL is undefined in my local env.
+24. Which tag was deployed before prod-2026.10.09?

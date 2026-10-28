@@ -10,13 +10,24 @@ on:
 permissions:
   contents: read
 
+# The gitleaks pin (version and per-platform SHA-256) lives here once and both jobs read it.
+# Dependabot cannot update it: see docs/ci-pins.md for how to refresh it. Hashes come from
+# https://github.com/gitleaks/gitleaks/releases/download/v<version>/gitleaks_<version>_checksums.txt
+env:
+  GITLEAKS_VERSION: 8.30.1
+  GITLEAKS_SHA256_LINUX_X64: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+  GITLEAKS_SHA256_DARWIN_ARM64: b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5
+  GITLEAKS_SHA256_DARWIN_X64: dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709
+
 jobs:
   skills:
     name: skills are valid and scripts work
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           fetch-depth: 0 # the secret scan below reads every commit
 
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
@@ -47,15 +58,13 @@ jobs:
           echo "version $got"
 
       - name: Install gitleaks
-        env:
-          GITLEAKS_VERSION: 8.30.1
         run: |
           V=$GITLEAKS_VERSION
           dir=$(mktemp -d)
           base="https://github.com/gitleaks/gitleaks/releases/download/v${V}"
           curl -sSfL -o "$dir/gitleaks_${V}_linux_x64.tar.gz" "$base/gitleaks_${V}_linux_x64.tar.gz"
-          # the expected hash is pinned here: a checksums file from the same release page proves nothing
-          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $dir/gitleaks_${V}_linux_x64.tar.gz" | sha256sum -c -
+          # the expected hash is pinned in the workflow env: a checksums file from the same release page proves nothing
+          echo "$GITLEAKS_SHA256_LINUX_X64  $dir/gitleaks_${V}_linux_x64.tar.gz" | sha256sum -c -
           sudo tar -xzf "$dir/gitleaks_${V}_linux_x64.tar.gz" -C /usr/local/bin gitleaks
           gitleaks version
 
@@ -80,6 +89,8 @@ jobs:
     timeout-minutes: 20 # a hung test must fail the job, not run for hours
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Syntax-check every script with the system bash
         run: |
@@ -90,7 +101,22 @@ jobs:
           done
 
       - name: Install gitleaks
-        run: brew install gitleaks
+        run: |
+          V=$GITLEAKS_VERSION
+          case "$(uname -m)" in
+            arm64) arch=arm64; want=$GITLEAKS_SHA256_DARWIN_ARM64 ;;
+            x86_64) arch=x64; want=$GITLEAKS_SHA256_DARWIN_X64 ;;
+            *) echo "::error::unsupported runner architecture $(uname -m)"; exit 1 ;;
+          esac
+          dir=$(mktemp -d)
+          file="gitleaks_${V}_darwin_${arch}.tar.gz"
+          curl -sSfL -o "$dir/$file" "https://github.com/gitleaks/gitleaks/releases/download/v${V}/$file"
+          # the expected hash is pinned in the workflow env, as on Linux; macOS has shasum, not sha256sum
+          echo "$want  $dir/$file" | shasum -a 256 -c -
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$dir/$file" -C "$HOME/.local/bin" gitleaks
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/gitleaks" version
 
       - name: Test skill scripts
         run: |

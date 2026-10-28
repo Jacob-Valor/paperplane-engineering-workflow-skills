@@ -1,4 +1,4 @@
-<!-- skill under test: paperplane-reviewing-prs; heldout: true -->
+<!-- skill under test: paperplane-reviewing-prs -->
 # Scenario
 
 Repo `sanaam-web`, PR #174 `feat(search): filter by province` by Rithy. `.github/CODEOWNERS`:

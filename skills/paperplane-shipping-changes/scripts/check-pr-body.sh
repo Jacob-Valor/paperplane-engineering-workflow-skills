@@ -27,9 +27,10 @@ else
   echo "usage: bash scripts/check-pr-body.sh [--mobile|--no-mobile] <body-file | --pr N>"; exit 2
 fi
 
-# Drop CRs and every <!-- ... --> comment, single- or multi-line, each one up to its own first -->.
+# Drop every <!-- ... --> comment, single- or multi-line, each one up to its own first -->.
+# No CR stripping: every later check treats a trailing CR as [[:space:]], so CRLF bodies behave the same.
 BODY=$(printf '%s\n' "$BODY" | awk '{
-  sub(/\r$/, ""); line = $0; out = ""
+  line = $0; out = ""
   while (1) {
     if (inc) { i = index(line, "-->"); if (!i) { line = ""; break }; line = substr(line, i + 3); inc = 0 }
     i = index(line, "<!--"); if (!i) { out = out line; break }
