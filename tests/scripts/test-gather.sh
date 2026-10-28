@@ -136,6 +136,14 @@ has    "advisory-only red: says it never blocks" 'only the advisory AI review.*n
 lacks  "advisory-only red: not called unready" 'not ready to approve'
 has    "unreadable section reported" '^unavailable: HTTP 502'
 
+# an unreadable diff says "unavailable" and the other sections still print
+pr_json 22 false develop fix/nodiff "x"
+rm "$F/diff-22.txt"
+expect "unreadable diff does not abort" 0 bash "$G" 22 paperplanehq/demo
+check  "unreadable diff: Diff section says unavailable" "$(grep -A1 -x '== Diff ==' "$out" | sed -n 2p | cut -c1-12)" "unavailable:"
+has    "unreadable diff: other sections still print" '^== Commit authors ==$'
+has    "unreadable diff: files section still prints" '^src/otp\.ts$'
+
 # review threads over several pages: every page counts (gh --paginate prints one jq result per page)
 pr_json 20 false develop fix/pages "x"
 { echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":false},{"isResolved":false},{"isResolved":true}],"pageInfo":{"hasNextPage":true,"endCursor":"c1"}}}}}}'
