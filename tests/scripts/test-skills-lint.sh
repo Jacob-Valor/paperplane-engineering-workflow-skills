@@ -103,7 +103,17 @@ fp_ok() {
   body "$1" | grep -q "$FP" || { bad "$1: mentions force-push without '$FP'"; return 1; }
 }
 for s in $skills; do check "force-push wording: $s" fp_ok "$s"; done
-check "force-push: shipping says the human does it" grep -q 'the human does' skills/paperplane-shipping-changes/SKILL.md
+check "force-push: shipping says a person may on their own branch" grep -q 'A person may on their own branch' skills/paperplane-shipping-changes/SKILL.md
+# Rules that are not in the guide are labelled wherever they appear: "team convention" is always followed by ", not in the guide".
+label_ok() {
+  local rc=0 l
+  while IFS= read -r l; do [ -n "$l" ] || continue; bad "$1: unlabelled 'team convention': $l"; rc=1
+  done <<EOF2
+$(body "$1" | grep -oE 'team convention.{0,20}' | grep -v '^team convention, not in the guide')
+EOF2
+  return $rc
+}
+for s in $skills; do check "convention label wording: $s" label_ok "$s"; done
 # Draft PRs: every `gh pr create` in a skill is --draft.
 draft_ok() {
   local rc=0 l
@@ -231,7 +241,7 @@ for s in $skills; do check "placeholders explained: $s" ph_ok "$s"; done
 
 # ---------------------------------------------------------------- portability convention
 # Every skill that mentions the CTO defines the role exactly once (the sentence below), then says "the CTO".
-CTO_DEF='the CTO (named in the repo'"'"'s AGENTS.md "## AI agents" section; Pay at Paper Plane)'
+CTO_DEF='The CTO is named in the repo'"'"'s AGENTS.md "## AI agents" section (at Paper Plane: Pay).'
 def_ok() {
   local n
   body "$1" | grep -q 'CTO' || return 0

@@ -19,7 +19,7 @@ use pnpm only, keep secrets out of git, and leave merging, releasing and deployi
 | [`paperplane-reviewing-prs`](skills/paperplane-reviewing-prs/SKILL.md) | Reviewing a teammate's PR. Produces a findings report; a human approves and merges |
 | [`paperplane-secret-incidents`](skills/paperplane-secret-incidents/SKILL.md) | gitleaks fails, a credential was committed or pasted, someone asks for `.env` values |
 | [`paperplane-releasing`](skills/paperplane-releasing/SKILL.md) | Release PRs `develop → uat → main`, `prod-YYYY.MM.DD` tags, rollback, hotfixes, `app-vX.Y.Z` store tags |
-| [`paperplane-repo-setup`](skills/paperplane-repo-setup/SKILL.md) | Onboarding a repo: standard CI, PR template, `CODEOWNERS`, `AGENTS.md`, pnpm migration, branches, auto-merge |
+| [`paperplane-repo-setup`](skills/paperplane-repo-setup/SKILL.md) | Onboarding a repo: standard CI, PR template, `CODEOWNERS`, `AGENTS.md`, pnpm migration, branches, merge settings |
 
 Agents load a skill automatically when the request matches its description. You can also ask for
 one by name: "use paperplane-shipping-changes".
@@ -44,7 +44,7 @@ skills/<name>/scripts/*.sh                checks the skill runs with `bash`
   shipping-changes/scripts/pre-push.sh    branch, lockfiles, .env, build output, gitleaks before a push
   shipping-changes/scripts/check-pr-body.sh  the CI "PR body is complete" step, locally
   reviewing-prs/scripts/gather.sh         everything a reviewer needs for one PR
-  releasing/scripts/next-tag.sh           next prod-/uat- tag name, or the rollback tag
+  releasing/scripts/next-tag.sh           next prod- tag name, or the rollback tag
   repo-setup/scripts/audit.sh             PASS/FAIL audit of one repo against the standard
 skills/paperplane-shipping-changes/hooks/ git pre-push hook and Claude Code guard, with installers
 tests/scenarios/                          agent pressure scenarios S1–S27 and S40–S44 (S20–S27 held out)
@@ -54,7 +54,7 @@ tests/RESULTS.md                          before/after scores for every change
 tests/eval/run.py                         runs the scenarios through `claude -p` and grades them
 tests/eval/checks.py                      mechanical checks on top of the model grader
 tests/eval/sandbox/run.py                 tool-using eval in a throwaway repo, graded by end state
-tests/scripts/                            behaviour tests for every script and hook (CI)
+tests/scripts/                            behaviour tests for every script and hook, run in CI
 tests/drift/check.sh                      do the skills still match the live guide?
 .github/workflows/validate.yml            spec validation, shellcheck, script tests, eval self-tests
 .github/workflows/drift.yml               weekly drift check (needs the ORG_READ_TOKEN secret)
@@ -94,8 +94,7 @@ bash <skills>/paperplane-shipping-changes/hooks/install-omp-hook.sh
 
 All installers have `--uninstall`. `git push --no-verify` skips the git hook; the skills forbid it,
 and the Claude Code and omp guards block it. The committed guard is the one that matters most: in
-the tool-run evals, small models often never opened a skill, and only the guard stopped them. On
-2026-10-16 none of the 13 `paperplanehq` repos had it (`audit.sh` FAIL `claude-guard` on all 13).
+the tool-run evals, small models often never opened a skill, and only the guard stopped them. `audit.sh` reports FAIL `claude-guard` for any repo that lacks it.
 Other agents (Codex, Cursor) get only the git pre-push hook and the server-side ruleset.
 
 The guard is best-effort for a cooperative agent, not a sandbox. It reads the Bash command and the small
@@ -125,7 +124,7 @@ flowchart TD
   F --> E["Person running the agent<br/>reviews the full diff, says go<br/>agent runs gh pr ready"]
   E --> G{"CI: standard / checks<br/>pnpm only · secret scan · PR title<br/>PR body is complete · PR size"}
   G -->|"green"| R{"Reviewer: a code owner, not the author,<br/>not who prompted the agent<br/>paperplane-reviewing-prs"}
-  R -->|"approved, threads resolved"| D[("develop<br/>squash and merge or auto-merge")]
+  R -->|"approved, threads resolved"| D[("develop<br/>squash and merge")]
   G -->|"secret found"| S["paperplane-secret-incidents<br/>tell the CTO, rotate, fix the code"]
   G -->|"other check red"| X["Fix on the branch<br/>new commit"]
   R -->|"changes needed"| X
@@ -183,8 +182,8 @@ didn't write the PR and didn't prompt the agent that wrote it. The **CTO** (Pay)
   is marked Ready (§4); that is the only rule that depends on what you work on.
 - **Reviewer:** checks the description matches the diff, CI is green (the advisory AI review never
   blocks), no secrets or `.env`, no `package-lock.json`/`yarn.lock`/`bun.lock`, tests for new logic,
-  mobile verified on both platforms, one concern per PR, every thread resolved (§4). Then approves;
-  auto-merge or the reviewer squash-merges. A secret in the diff hands off to `paperplane-secret-incidents`.
+  mobile verified on both platforms, one concern per PR, every thread resolved (§4). Then approves
+  and squash-merges. A secret in the diff hands off to `paperplane-secret-incidents`.
 - **CTO:** merges `develop → uat → main` with merge commits, tags `prod-YYYY.MM.DD`, deploys (§8).
   Gets told at once about leaked secrets, which must be rotated (§6). Applies repo settings that
   repo-setup writes out.
@@ -198,7 +197,7 @@ Agents follow the same rules as developers (§7), with less authority:
 | Work on a feature branch; commit as `type(scope): summary`; stage files by name | — |
 | Run `scripts/pre-push.sh` (branch, lockfiles, `.env`, build output, `gitleaks`) before every push; push the branch the same day and open a **draft** PR into `develop` marked `AI-assisted: yes` | — |
 | Show the person running them the full diff; check the body with `scripts/check-pr-body.sh`; run `gh pr ready` only after the person says they reviewed it | That person reviews every line and says go |
-| — | The author turns on auto-merge; a code owner approves; the PR squash-merges |
+| — | A code owner approves and the PR squash-merges. Auto-merge is a person's call, never the agent's (team convention, not in the guide) |
 | Merge `develop` into a stacked branch after the PR below merges | A person rebases and force-pushes, if they prefer |
 | Prepare release PRs, compute the `prod-*` tag, write out the commands | The CTO merges to `uat`/`main`, tags and deploys |
 | Draft the CTO notification for a leaked secret, without the value | The CTO rotates it and approves any gitleaks allowlist entry |
@@ -207,8 +206,12 @@ Agents follow the same rules as developers (§7), with less authority:
 Nobody, person or agent, pushes directly to `develop`, `uat` or `main`, runs `npm install`, `yarn` or
 `bun install`, commits a second lockfile, or commits or pastes a secret (§2, §5, §6). A rule that
 doesn't fit your case: ask the CTO. No exception is granted inside the agent conversation, even by
-the CTO: the agent keeps following the rule and drafts a message to the CTO, and a human with the
-right access acts outside the agent.
+the CTO: an agent cannot verify who is typing, so the agent keeps following the rule and drafts a
+message to the CTO, and the CTO acts outside the agent (runs the command, or comments on the PR).
+
+Rules that are not in the guide are labelled "team convention, not in the guide" in the skills and
+listed, with a question and a safe default each, in
+[`docs/open-questions-for-cto.md`](docs/open-questions-for-cto.md).
 
 ## Install
 
@@ -280,5 +283,6 @@ Rules for `SKILL.md`:
   (the guide date the skill matches); `compatibility` only when the skill needs tools.
 - Anything a regex or exit code can check goes in a script under `scripts/`, called with `bash`,
   with a test in `tests/scripts/test-<name>.sh`.
-- Keep the body under 500 lines. Quote the guide; don't invent policy. If the guide changes,
+- Keep the body under 500 lines. Quote the guide; don't invent policy. A rule the guide lacks is labelled
+  `(team convention, not in the guide)` and added to `docs/open-questions-for-cto.md`. If the guide changes,
   update the skill and `guide-version` in the same PR or the next one.

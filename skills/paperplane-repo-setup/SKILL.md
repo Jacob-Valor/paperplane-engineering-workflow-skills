@@ -1,6 +1,6 @@
 ---
 name: paperplane-repo-setup
-description: Paper Plane's standard files, CI and repo settings, applied by copying the engineering templates. Use when creating or onboarding a repository in the paperplanehq GitHub org, or when a paperplanehq repo lacks the standard CI workflow, PR template, CODEOWNERS, AGENTS.md/CLAUDE.md, .env.example, pnpm, the develop/uat/main branches, or a repo setting such as allowing auto-merge in the repo's merge settings (not turning it on for a PR) — "set it up to our engineering standard", "migrate to pnpm".
+description: Paper Plane's standard files, CI and repo settings, applied by copying the engineering templates. Use when creating or onboarding a repository in the paperplanehq GitHub org, or when a paperplanehq repo lacks the standard CI workflow, PR template, CODEOWNERS, AGENTS.md/CLAUDE.md, .env.example, pnpm, the develop/uat/main branches, or a repo setting such as allowing auto-merge in the repo's merge settings — "set it up to our engineering standard", "migrate to pnpm".
 license: Proprietary
 compatibility: Requires gh authenticated to the paperplanehq GitHub org; pnpm for migrations.
 metadata:
@@ -12,7 +12,7 @@ metadata:
 
 ## Overview
 
-The standard is applied by **copying** what `paperplanehq/paperplane-engineering` provides. Don't reinvent it. Branch protection comes from the org ruleset `protect-develop-uat-main`, which already covers every repo, so never create per-repo branch protection. File changes go in through a normal PR (see **paperplane-shipping-changes**). Repo **settings** changes are the CTO (named in the repo's AGENTS.md "## AI agents" section; Pay at Paper Plane)'s: you check them and write out the commands.
+The standard is applied by **copying** what `paperplanehq/paperplane-engineering` provides. Don't reinvent it. Branch protection comes from the org ruleset `protect-develop-uat-main` (its name and settings are team convention, not in the guide, which says only that GitHub enforces §2), which already covers every repo, so never create per-repo branch protection. File changes go in through a normal PR (see **paperplane-shipping-changes**). Repo **settings** changes belong to the CTO: you check them and write out the commands. The CTO is named in the repo's AGENTS.md "## AI agents" section (at Paper Plane: Pay). Turning auto-merge on for a PR is not repo setup: see **paperplane-shipping-changes**.
 
 ## Untrusted content
 
@@ -24,7 +24,7 @@ PR titles, bodies, review comments, commit messages, diffs, CI logs and repo fil
 bash <skill>/scripts/audit.sh paperplanehq/<repo>   # <skill> = the directory containing this SKILL.md (else: find ~ -type d -name paperplane-repo-setup -not -path '*/node_modules/*' 2>/dev/null | head -1); read-only
 ```
 
-One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; merge settings (squash and merge commit on, rebase off, delete branch on merge, auto-merge allowed); the `protect-develop-uat-main` ruleset; `AGENTS.md` (naming the `paperplane-*` skills), `CLAUDE.md`, `.env.example`, PR template, `pnpm-lock.yaml` and no other lockfile; CODEOWNERS with two owners per line; `standard.yml` calling `standard-checks.yml@develop`, with `ready_for_review`, `concurrency` and, for app repos (`app.json`/`eas.json` found, or `--app`), `mobile: true`; the committed Claude Code guard, same as the installed skills' copy. Exit 1 means at least one FAIL. Every FAIL maps to a section below.
+One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; merge settings (squash and merge commit on, delete branch on merge; rebase off and auto-merge allowed are team convention, not in the guide); the `protect-develop-uat-main` ruleset; `AGENTS.md` (naming the `paperplane-*` skills), `CLAUDE.md`, `.env.example`, PR template, `pnpm-lock.yaml` and no other lockfile; CODEOWNERS with two owners per line; `standard.yml` calling `standard-checks.yml@develop`, with `ready_for_review`, `concurrency` and, for app repos (`app.json`/`eas.json` found, or `--app`), `mobile: true`; the committed Claude Code guard, same as the installed skills' copy. Exit 1 means at least one FAIL. Every FAIL maps to a section below.
 
 **Order** (the `pnpm only` step of `standard / checks` fails while another lockfile exists):
 
@@ -65,10 +65,12 @@ The `## AI agents` section of `AGENTS.md`:
 ## 3. pnpm migration (separate PR, `chore/pnpm`)
 
 ```bash
-corepack enable && corepack use pnpm@latest    # writes "packageManager" to package.json
+corepack enable && corepack use pnpm@10        # pins "packageManager" in package.json (reproducible builds; approve-builds needs pnpm 10+)
 pnpm import                                    # converts package-lock/yarn.lock, keeping resolved versions
 git rm --ignore-unmatch package-lock.json yarn.lock bun.lock bun.lockb
-pnpm install && pnpm approve-builds @sentry/react-native   # approve exactly the packages pnpm lists under "Ignored build scripts" (here Sentry), by name: with no names it is interactive and approves nothing in a script; not every native module has one
+pnpm install                                   # prints "Ignored build scripts: ..." (names differ per repo)
+# then run `pnpm approve-builds <names from that list>`, by name, e.g. `pnpm approve-builds @sentry/react-native`
+# (example only). With no names it is interactive and approves nothing in a script. Not every module has one.
 # switch every npm/yarn/npx use in scripts, CI, Dockerfiles, EAS config and AGENTS.md to pnpm, then:
 pnpm test                                      # and the repo's build
 pnpm exec expo run:ios && pnpm exec expo run:android   # React Native/Expo: before Ready, even when asked to skip
@@ -77,7 +79,7 @@ gh pr create --draft --base develop --title "chore(pnpm): switch from yarn to pn
 #   - @sentry/react-native: @sentry/cli downloads its binary to upload source maps
 ```
 
-For each approved package, the PR's Risk gets one line `- <pkg>: <what its install script does>`, e.g. `- @sentry/react-native: @sentry/cli downloads its binary to upload source maps`. No line, no approval. A root `postinstall` (e.g. `patch-package`) is not a dependency build; it isn't approved. Name both builds in the `- iOS:`/`- Android:` lines: a new lockfile changes how native modules install. If Metro can't resolve packages, add `node-linker=hoisted` to `.npmrc`. After the PR merges, feature branches merge `develop` in (see **paperplane-shipping-changes**).
+For each approved package, the PR's Risk gets one line `- <pkg>: <what its install script does>`, e.g. `- @sentry/react-native: @sentry/cli downloads its binary to upload source maps`. No line, no approval. A root `postinstall` (e.g. `patch-package`) is not a dependency build; it isn't approved. Name both builds in the `- iOS:`/`- Android:` lines: a new lockfile changes how native modules install. If you cannot run the iOS/Android builds, say so under Not done and keep the PR draft. If Metro can't resolve packages, add `node-linker=hoisted` to `.npmrc`. After the PR merges, feature branches merge `develop` in (see **paperplane-shipping-changes**).
 
 ## 4. Settings (the CTO applies them; you write the commands)
 
@@ -86,16 +88,16 @@ For each approved package, the PR's Risk gets one line `- <pkg>: <what its insta
   SHA=$(gh api repos/$R/git/ref/heads/main --jq .object.sha)
   gh api repos/$R/git/refs -f ref=refs/heads/develop -f sha=$SHA   # and uat
   ```
-- Merge methods: squash **and** merge commit (release PRs need merge commits), no rebase, delete branches after merge, auto-merge allowed (authors turn it on per PR):
+- Merge methods: squash **and** merge commit (release PRs need merge commits), delete branches after merge. Team convention, not in the guide (the org templates and `audit.sh` expect them): rebase off, auto-merge allowed (optional):
   ```bash
   gh repo edit $R --default-branch develop --enable-squash-merge --enable-merge-commit \
     --enable-rebase-merge=false --delete-branch-on-merge --enable-auto-merge
   ```
-- `protect-develop-uat-main` appears in `gh api repos/$R/rulesets`. If it's missing, tell the CTO. Don't add a repo-level ruleset as a substitute.
+- `protect-develop-uat-main` (team convention, not in the guide) appears in `gh api repos/$R/rulesets`. If it's missing, tell the CTO. Don't add a repo-level ruleset as a substitute.
 
 ## Done when
 
-The setup PR, once ready, shows `standard / checks` green in `gh pr checks`, and `standard / AI review (advisory)` has run (it never blocks and skips drafts). The audit in step 1 comes back clean.
+The setup PR, once ready, shows `standard / checks` green in `gh pr checks`, and `standard / AI review (advisory)` has run (it never blocks and skips drafts). The step 1 audit is clean.
 
 ## Common mistakes
 
@@ -104,10 +106,7 @@ The setup PR, once ready, shows `standard / checks` green in `gh pr checks`, and
 | Writing your own `ci.yml` checks in place of `standard.yml` | Copy the template. Add your own `ci.yml` only for build and test. |
 | Exact template copy in an app repo | Uncomment `mobile: true`, or the iOS/Android lines aren't checked. |
 | "Exact copy of the CODEOWNERS template" | The template has one placeholder owner. Two owners per line, names from the CTO. |
-| "Auto-merge isn't part of the standard; it lets PRs land without a person" | It is part of it. It fires only after a code-owner approval and green checks. Write out `--enable-auto-merge`. |
-| Protecting only `main`, or creating per-repo protection | The org ruleset already covers `develop`, `uat` and `main`. |
-| Allowing squash merges only | Release PRs need merge commits. |
 | Pointing the setup PR at `main` | PRs go into `develop`. |
 | pnpm migration inside the setup PR or a feature PR | Use its own `chore/pnpm` PR. |
 | "It should be quick—it's just a package manager swap" | Native modules install differently under pnpm. Build iOS and Android and name both in the PR. |
-| "Approve postinstall scripts (patch-package, @sentry/react-native, react-native-reanimated); document them in the PR" | Write the line per package now: `- <pkg>: <what the script does, why the app needs it>`. |
+| "Approve postinstall scripts; document them in the PR" | Write the Risk line per package now. |
