@@ -219,6 +219,10 @@ class Sandbox:
                    GH_CONFIG_DIR=str(self.root / "gh-config"), GH_PROMPT_DISABLED="1",
                    GIT_CONFIG_GLOBAL=str(self.root / "gitconfig"), GIT_CONFIG_NOSYSTEM="1",
                    GIT_TERMINAL_PROMPT="0", TMPDIR=str(self.root / "tmp"))
+        if not shutil.which("gitleaks"):
+            # The git hook blocks a push when gitleaks is missing. The sandbox is a fixture: without gitleaks on the
+            # host it must behave as it did before that rule (the hook lets the push through), as the self-check expects.
+            env["PAPERPLANE_ALLOW_NO_GITLEAKS"] = "1"
         return env
 
     def git(self, *args, cwd=None, check=True):
