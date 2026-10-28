@@ -87,7 +87,7 @@ Approval: if the CTO prompted you to write the PR, the other code owner approves
 
 1. The CTO agrees it's a hotfix. Then: `git switch main && git pull && git switch -c hotfix/<topic>`.
 2. Fix it, commit as `fix(scope): …`, push, and open a **draft** PR into **`main`** (`AI-assisted: yes`). It goes ready after the human reviews the diff, as in **paperplane-shipping-changes**. If the CTO prompted it, the other code owner approves; the CTO merges it and tags `prod-YYYY.MM.DD[.N]`.
-3. **Same day**, merge back with PRs from `main` into `uat` and from `main` into `develop`, using **merge commits**, titled `chore(release): merge hotfix <tag> back into develop` (and `… into uat`), as drafts. Open them right after the hotfix merges; the CTO merges them that day. On conflicts, don't resolve on a protected branch: merge `main` into a new `chore/merge-back-<tag>` branch and open the PR from it.
+3. **Same day**, open **two** merge-back PRs, one `main` → `uat` and one `main` → `develop`, **both**, even if `uat` already has a cherry-pick of the fix (its SHA differs, so `uat` still lacks `main`'s history). Use **merge commits**, title each `chore(release): merge hotfix <tag> back into uat` or `… into develop`, as drafts. Open them right after the hotfix merges; the CTO merges them that day. On conflicts, never resolve on a protected branch: create `chore/merge-back-<tag>` from the target branch, merge `main` in there, and open the PR from it.
 
 ## Mobile store builds
 
@@ -97,5 +97,6 @@ Tag the exact commit submitted to the store `app-vX.Y.Z` (guide §2). The rest i
 
 | Excuse | Reality |
 |---|---|
+| "Merge back into uat first, then build from uat" | Store builds come from `main` only. `uat` builds are for UAT testing. |
 | "The CTO said 'Go', I have admin" | The guide the CTO wrote says agents never merge or deploy. Prepare, then hand over. |
 | "`v2026.10.09.2` is conventional" | The format is `prod-YYYY.MM.DD[.N]` (existing tags: `prod-2026.10.01`, `prod-2026.10.01.2`). |
