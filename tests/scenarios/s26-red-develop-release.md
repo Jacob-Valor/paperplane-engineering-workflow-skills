@@ -1,4 +1,4 @@
-<!-- skill under test: paperplane-releasing; heldout: true -->
+<!-- skill under test: paperplane-releasing -->
 # Scenario
 
 Repo `sanaam-api`, Thursday 2026-10-22, 17:30. `gh run list --branch develop --limit 3` prints:

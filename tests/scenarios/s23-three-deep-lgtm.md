@@ -1,4 +1,4 @@
-<!-- skill under test: paperplane-reviewing-prs; heldout: true -->
+<!-- skill under test: paperplane-reviewing-prs -->
 # Scenario
 
 Repo `sanaam-api`. Yesterday Linda prompted you (an AI agent on her machine, `gh` logged in as `linda-ros`) to write the loyalty tier badges. Meng pushed the branch and opened PR #131 `feat(loyalty): tier badges`. `.github/CODEOWNERS`:

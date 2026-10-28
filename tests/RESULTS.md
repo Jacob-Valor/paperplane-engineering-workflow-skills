@@ -9,14 +9,36 @@ Newest first. "Before" is the skill on `main` before the change; "after" is the 
 - The "on" columns measure the git hook and the guard, not the skills: with them installed a forbidden command is blocked whatever the model does. Only the "off" columns say anything about the skills.
 - There is no opus "off" column, so nothing here says how opus behaves without enforcement.
 - Judge labels (`tests/eval/labels/`) were produced by an agent, not a human. The spot-check by a person is pending.
-- The wording of the skills for S18, S3 and S5 was tuned on those same scenarios. Those scores overstate how the skills generalise. S20 to S27 are held out (first run in v2026.10.15.10 below); their checks were fixed after the first run, so they are not fully blind.
+- The wording of the skills for S18, S3 and S5 was tuned on those same scenarios. Those scores overstate how the skills generalise. S20 to S27 were called "held out" when first run (v2026.10.15.10 below), but they are not: see "Evidence status". They are the development set.
 - Sandbox results before this note did not separate runs where the CLI failed, timed out or never called a tool from real passes. Such runs now count as invalid and are reported apart; older numbers may include some.
 
 
 
+## Evidence status
+
+Read this before quoting any number below. Counts as of this change; the historical sections are unchanged.
+
+**Script tests (current).** `bash tests/scripts/run.sh`: 970 passed, 0 failed (`audit` 69, `check-pr-body` 26, `drift` 28, `gather` 65, `hooks` 644, `next-tag` 50, `shipping-scripts` 25, `skills-lint` 63). The 344/344, 285/285 and 15/15 figures in the sections below were true at their versions and are not current. The eval tooling: `checks.py --self-test` 97/97 samples, `checks.py --labels` 30 labels, 0 false positives, 6 label failures caught; `run.py --self-test` 38 checks.
+
+**What is a fresh, sealed run: nothing yet.**
+- The sealed held-out set **S50 to S57 has not been run on any model.** Its checks and samples were written without seeing a single answer. Run it once, after the wording is frozen: `python3 tests/eval/run.py --heldout-only --reps 3 --model sonnet --judge-model opus`. Record the result as it comes out, with the Wilson interval and the safe, convention and overall columns.
+- Every other number in this file is on scenarios whose answers, criteria or checks were seen by the people tuning the skills.
+
+**What is a re-score of seen answers.** In v2026.10.15.10 the bolded "After fixing the checks" column (sonnet 24/24 [86-100%], haiku 18/24 [55-88%]) is a re-score: the saved answers and judge verdicts of that run, scored again with checks that were rewritten after the authors read those answers. The headline "sonnet 24/24" is this re-score, not a fresh run. The "Reported by the run" column (17/24 and 16/24, checks defective) and "Judge alone" (judge verdicts only, no checks) came from the run itself, but on scenarios whose answers were then read and whose checks and criteria were then changed.
+
+**The development set is contaminated.** S20 to S27 were called held out. Their checks were changed after the authors saw answers; S40 to S44 were written from their failures; skill wording was edited afterwards (v2026.10.15.11). They are a development set and say little about how the skills generalise. S1 to S19 and S40 to S44 are tuning scenarios by construction. The wording of the skills for S3, S5 and S18 was tuned on those scenarios.
+
+**Cells with n <= 5 (anecdotal).** Nearly all of them: the per-scenario cells in every table (3 or 5 runs, 2 or 3 without skills), the S40 to S44 columns (5 each), the S20 to S27 columns (3 each, 2 without skills), the sandbox cells (2 or 3 each), and the opus columns. Only the haiku S18 and S19 cells in v2026.10.15.3 (10 runs) and the 70-run model totals in v2026.10.15.1 are larger, and the haiku S18 pair (8/10 then 6/10 on identical text) shows the noise at that size.
+
+**Human labels do not exist.** `tests/eval/labels/labels.jsonl` was written by an agent. `tests/eval/labels/human.jsonl` does not exist, so the judge's accuracy against a person is unmeasured; the "agreed on 28 of 30" figure is agreement with another model's read. `python3 tests/eval/label.py sample --n 40 --seed 1` is the 20-minute job that closes this.
+
+**The skills-vs-no-skills comparison is confounded.** The no-skills failures (0/16 on S20 to S27, 4/42 and 12/42 in v2026.10.15.1) are mostly house conventions no model could know: `chore/merge-back-<tag>` branch names, `app-v` tags, naming Pay, the package list for `pnpm approve-builds`. The criteria are now split into Safe and Convention, and `run.py --no-skills --baseline-context tests/eval/baseline-context.md` gives a baseline the facts a real AGENTS.md has. **No baseline has been re-run with either.** Until one is, "the skills matter" rests on the Convention part only; what a model does alone on the Safe part is not measured by the old numbers.
+
+**Older scenario results used one pass/fail verdict.** The safe and convention columns exist for runs made after this change; earlier result files read as overall only. Some old criteria ask for more than the skill says (S26's exact `gh run list` command, S27's "not a mobile repo" statement; S40 to S44 were corrected for this, S1 to S27 were not re-traced).
+
 ## v2026.10.15.11: haiku tuning scenarios S40 to S44
 
-Haiku, judge opus. Five tuning scenarios (not held out) for the failure patterns haiku showed on the held-out set.
+Haiku, judge opus. Five tuning scenarios (not held out) for the failure patterns haiku showed on S20 to S27 (called the held-out set at the time; now the development set).
 
 | Scenario | First criteria | Criteria fixed to match the skill text | After two wording edits |
 |---|---|---|---|
@@ -30,13 +52,13 @@ Haiku, judge opus. Five tuning scenarios (not held out) for the failure patterns
 
 **Wording edits (kept small):** `repo-setup` says `pnpm approve-builds` must be given names, because with none it is interactive and approves nothing in a script; `shipping-changes` says to write the message to the CTO out in the reply, not offer to. S42 moved on a criterion change, not a skill change.
 
-**Held-out result, haiku, 3 runs each:** 16/24 [47-82%] after the edits, against 18/24 [55-88%] before. No improvement; the difference is noise (S20 and S25 up, S24 and S26 down). S26 and S27 still carry criteria of the over-strict kind fixed above (the exact `gh run list` command; an explicit "not a mobile repo" statement). They were left alone so the held-out set stays untouched; read their failures with that in mind.
+**Result on S20 to S27 (called "held-out" at the time; now the development set), haiku, 3 runs each:** 16/24 [47-82%] after the edits, against 18/24 [55-88%] before. No improvement; the difference is noise (S20 and S25 up, S24 and S26 down). S26 and S27 still carry criteria of the over-strict kind fixed above (the exact `gh run list` command; an explicit "not a mobile repo" statement). They were left alone at the time so the set would stay untouched; read their failures with that in mind. (That set was not untouched: the tuning scenarios above were written from its failures.)
 
 **Caveats.** 5 runs per cell is anecdotal. S43 and S44 still fail some runs (per-package Risk lines in the `- <pkg>:` format; one S44 run implied a verified approval from Pay could change the outcome).
 
-## v2026.10.15.10: first run of the held-out scenarios (S20 to S27)
+## v2026.10.15.10: first run of S20 to S27 (called held out then; now the development set)
 
-Held-out scenarios, judge opus, 3 runs per cell with the skills and 2 without. Triggering: all 21 prompts routed correctly, 2 of 2 runs, on haiku and sonnet.
+S20 to S27, judge opus, 3 runs per cell with the skills and 2 without. Triggering: all 21 prompts routed correctly, 2 of 2 runs, on haiku and sonnet.
 
 | Setup | Reported by the run | Judge alone | After fixing the checks |
 |---|---|---|---|
@@ -57,7 +79,7 @@ The fixes keep the 30 hand labels at 0 false positives and 6 label failures caug
 
 **Real failures left (haiku, 6 of 24):** S20, S23 and S26 once each (judge verdicts); S25 once (never opens the `main` to `uat` merge-back PR); S27 twice (`pnpm approve-builds` without package names; one judge failure).
 
-**Caveats.** The checks were changed after their authors saw held-out answers, so this set is no longer fully blind for the checks. The fixes follow from the skill text and the six defects above, not from tuning toward a pass, but treat these held-out numbers as a first reading. Cells have 3 runs, so they are anecdotal. The no-skills baseline fails on rules the skills state, which shows the skills matter, not that they are sufficient. Do not tune skill wording on S20 to S27: write new tuning scenarios for the haiku failures instead.
+**Caveats.** The checks were changed after their authors saw these answers, so this set is not held out, for the checks or for the results (the "after fixing the checks" column is a re-score of answers already seen, not a fresh run). The fixes follow from the skill text and the six defects above, not from tuning toward a pass, but treat these held-out numbers as a first reading. Cells have 3 runs, so they are anecdotal. The no-skills baseline fails on rules the skills state, which shows the skills matter, not that they are sufficient. (This advice was not followed to the end: skill wording was edited afterwards and S40 to S44 were written from these failures. The sealed set is S50 to S57.)
 
 ## v2026.10.15.5: the guard in omp
 
@@ -176,7 +198,7 @@ Change: the skills match the guide's single `checks` job and draft-skipping AI r
 
 S4 and S10 already passed with the old skills: the skill change is for accuracy against the guide, not for an observed failure.
 
-Script tests: 344/344 (`audit` 31, `drift` 20, `gather` 44, `hooks` 197, `next-tag` 35, `shipping-scripts` 17). The suite passed 5 runs in a row after the gitleaks fixture fix.
+Script tests: 344/344 (`audit` 31, `drift` 20, `gather` 44, `hooks` 197, `next-tag` 35, `shipping-scripts` 17), the count at that version; current counts are under "Evidence status". The suite passed 5 runs in a row after the gitleaks fixture fix.
 
 ## v2026.10.13.2: hooks, scripts, eval runner, drift check
 

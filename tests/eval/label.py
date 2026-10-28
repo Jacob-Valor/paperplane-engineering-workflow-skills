@@ -95,7 +95,8 @@ def criteria_for(paths, sid):
     for line in paths.readme.read_text().splitlines():
         m = re.match(rf"^\|\s*S{num}\b[^|]*\|[^|]*\|\s*(.*?)\s*\|\s*$", line)
         if m:
-            return m.group(1)
+            # Two-part rows: show Safe and Convention on their own lines. Label overall pass = both parts pass.
+            return re.sub(r"\s*\*\*Convention:\*\*", "\n**Convention:**", m.group(1))
     return "(no pass criteria row found in tests/README.md)"
 
 

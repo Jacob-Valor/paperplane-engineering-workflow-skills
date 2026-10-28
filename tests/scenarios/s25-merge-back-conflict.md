@@ -1,4 +1,4 @@
-<!-- skill under test: paperplane-releasing; heldout: true -->
+<!-- skill under test: paperplane-releasing -->
 # Scenario
 
 Repo `sanaam-app` (Expo), Tuesday 2026-10-20. Hotfix PR #77 `fix(booking): fare shows zero for child tickets` was merged into `main` this morning and the CTO tagged `prod-2026.10.20`. `app.json` on `main` has `"version": "3.8.1"`. `develop` has since refactored `src/booking/fare.ts`. You open the merge-back PRs from `main`; GitHub shows `main` → `uat` as clean, and `main` → `develop` as "This branch has conflicts that must be resolved" in `src/booking/fare.ts`.
