@@ -67,5 +67,31 @@ expect "CRLF mobile lines pass" 0 bash "$C" --mobile crlf-mob.md
 printf '## How I verified it\r\n- Commands:\r\n\r\n## Risk\r\nLow. Not done: x.\r\n\r\nAI-assisted: no\r\n' > crlf-empty.md
 expect "CRLF empty Commands line is empty" 1 bash "$C" --no-mobile crlf-empty.md
 
+# (e) both mobile lines are required for an app repo, each on its own
+mobbody() { # mobbody <file> <iOS value> <Android value>
+  printf '## How I verified it\n- Commands: x\n- iOS: %s\n- Android: %s\n\n## Risk\nLow. Not done: x.\n\nAI-assisted: no\n' "$2" "$3" > "$1"
+}
+mobbody both.md "iPhone 15 sim" "Pixel 8"
+expect "mobile: both lines filled passes" 0 bash "$C" --mobile both.md
+mobbody noandroid.md "iPhone 15 sim" ""
+expect "mobile: iOS filled, Android empty fails" 1 bash "$C" --mobile noandroid.md
+says   "mobile: names the Android line" "'- Android:' line is empty"
+mobbody noios.md "" "Pixel 8"
+expect "mobile: iOS empty, Android filled fails" 1 bash "$C" --mobile noios.md
+says   "mobile: names the iOS line" "'- iOS:' line is empty"
+printf '## How I verified it\n- Commands: x\n- iOS: iPhone 15 sim\n\n## Risk\nLow. Not done: x.\n\nAI-assisted: no\n' > noandroidline.md
+expect "mobile: Android line missing fails" 1 bash "$C" --mobile noandroidline.md
+sed 's/$/\r/' noandroid.md > crlf-noandroid.md
+expect "CRLF: Android empty still fails" 1 bash "$C" --mobile crlf-noandroid.md
+mobbody neither.md "" ""
+expect "mobile: neither line filled fails" 1 bash "$C" --mobile neither.md
+expect "non-mobile: empty iOS and Android lines are fine" 0 bash "$C" --no-mobile neither.md
+mobbody tbd.md "not a mobile change" "not a mobile change"
+expect "mobile: 'not a mobile change' passes" 0 bash "$C" --mobile tbd.md
+mkdir -p .github/workflows
+printf 'jobs:\n  s:\n    with:\n      mobile: true\n' > .github/workflows/standard.yml
+expect "auto-detect: mobile: true in standard.yml requires Android" 1 bash "$C" noandroid.md
+rm -rf .github
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

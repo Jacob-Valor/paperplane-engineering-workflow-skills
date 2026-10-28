@@ -244,6 +244,25 @@ compliant
 serve "repos/$R" ""
 expect "audit: unreadable repo exits 2" 2 bash "$A" "$R"
 expect "audit: usage error without a repo" 2 bash "$A"
+# A setting the token cannot see comes back null: WARN (could not be read), never PASS or FAIL
+compliant
+serve "repos/$R" "$(settings null)"
+expect "audit: a setting hidden from the token warns, does not fail" 0 bash "$A" "$R"
+says "audit: hidden setting is a WARN" '^WARN  allow_auto_merge +hidden from this token'
+says "audit: hidden setting counts one warn" '^summary: .* 0 fail, 1 warn$'
+
+# bun lockfiles are foreign lockfiles in a pnpm repo, both spellings
+for lock in bun.lock bun.lockb; do
+  compliant
+  serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}" "$lock")"
+  expect "audit: $lock fails" 1 bash "$A" "$R"
+  says "audit: names $lock as the extra lockfile" "^FAIL  pnpm-only .*${lock//./\\.}( |\$)"
+done
+compliant
+serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}" bunfig.toml lock.json)"
+expect "audit: look-alike names are not bun lockfiles" 0 bash "$A" "$R"
+says "audit: pnpm-only passes without a foreign lockfile" '^PASS  pnpm-only '
+
 expect "audit: usage error on a bad repo name" 2 bash "$A" demo-app
 expect "audit: --help exits 0" 0 bash "$A" --help
 
