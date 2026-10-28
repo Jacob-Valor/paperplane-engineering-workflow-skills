@@ -1,5 +1,8 @@
 version: 2
 updates:
+  # Keeps the SHA-pinned `uses:` lines in .github/workflows current. It cannot update the other
+  # pins (gitleaks version and hashes, the skills-ref commit, claude-code and pnpm versions):
+  # docs/ci-pins.md lists them and how to refresh each.
   - package-ecosystem: github-actions
     directory: /
     schedule:

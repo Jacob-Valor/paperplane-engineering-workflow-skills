@@ -1,14 +1,18 @@
 name: eval
 
 # Agent scenarios and the triggering test through `claude -p` (tests/eval/run.py), and the
-# tool-using sandbox eval (tests/eval/sandbox/run.py). Needs the ANTHROPIC_API_KEY secret.
-# Pull requests that touch a SKILL.md run only the triggering test (cheap); without the key they
-# skip with a warning, since forks never get secrets. The weekly run and manual runs do every
-# scenario on haiku, graded by opus, plus the sandbox with and without the hooks; without the key
-# they fail, so a missing key can't look like a passing eval.
+# tool-using sandbox eval (tests/eval/sandbox/run.py). The live jobs need the ANTHROPIC_API_KEY
+# secret, so they run only on the weekly schedule and on manual dispatch, NEVER on pull_request: a
+# pull request can edit tests/eval/*.py and print the key. On a pull request only the `offline`
+# job runs: the self-tests, which call no model and read no secret. Its job summary says the live
+# check was skipped by design, so a green pull request is never mistaken for a passing eval.
+# Pins and how to refresh them: docs/ci-pins.md.
 on:
   pull_request:
-    paths: ["skills/*/SKILL.md"]
+    paths:
+      - "skills/*/SKILL.md"
+      - "tests/eval/**"
+      - ".github/workflows/eval.yml"
   schedule:
     - cron: "0 3 * * 1" # Mondays 03:00 UTC, after the drift check
   workflow_dispatch:
@@ -26,6 +30,12 @@ on:
 permissions:
   contents: read
 
+# The gitleaks pin used by the sandbox eval. validate.yml keeps its own copy (workflows cannot
+# share env); tests/scripts/test-ci-pins.sh fails when the two versions differ.
+env:
+  GITLEAKS_VERSION: 8.30.1
+  GITLEAKS_SHA256_LINUX_X64: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+
 # The group includes the event name, so a manual dispatch never queues behind or cancels the
 # weekly run. Only superseded pull request pushes are cancelled; scheduled and dispatched runs
 # are never cancelled by a newer one (they cost real money and their results are the record).
@@ -34,86 +44,147 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  eval:
-    name: skills hold up in agent runs
+  offline:
+    name: eval self-tests (offline, no secrets)
     runs-on: ubuntu-latest
-    # Sized from the work, four runs at a time. Pull request: the triggering test only, 3 claude
-    # calls, so 20 minutes. Weekly/dispatch defaults: 19 scenarios x 3 reps x 2 calls (answer and
-    # grade) = 114 calls, plus 3 triggering calls, plus the sandbox: 9 scenarios x 2 enforcement
-    # modes x 2 reps = 36 runs. At 1-3 minutes a call and 3-5 minutes a sandbox run that is about
-    # 1-1.5 hours. 180 minutes leaves room for slow runs without letting a hang burn the 6-hour
-    # default; raise it if you dispatch with more reps or a bigger model.
-    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 180 }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
-      # The API key is set only on the steps that need it (this one, the triggering test and the
-      # scenarios), never at job level, so the install steps below (npm, the gitleaks
-      # download) cannot read it.
+      - name: Self-tests (no model calls)
+        run: |
+          python3 -m py_compile tests/eval/run.py tests/eval/checks.py tests/eval/label.py tests/eval/sandbox/run.py
+          python3 tests/eval/checks.py --self-test
+          python3 tests/eval/label.py --self-test
+          python3 tests/eval/run.py --self-test
+          git config --global user.name "eval bot"; git config --global user.email "eval@example.com"
+          python3 tests/eval/sandbox/run.py --self-check
+
+      - name: Say what this run did not check
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "### Live eval: skipped" >> "$GITHUB_STEP_SUMMARY"
+          echo "live check skipped on pull requests (no secrets by design). Only the offline self-tests ran. The live eval runs weekly and on manual dispatch (Actions > eval > Run workflow)." >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::live check skipped on pull requests (no secrets by design); only the offline self-tests ran"
+
+  eval:
+    name: skills hold up in agent runs
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Weekly/dispatch defaults: 19 scenarios x 3 reps x 2 calls (answer and grade) = 114 calls,
+    # plus 3 triggering calls, plus the sandbox: 9 scenarios x 2 enforcement modes x 2 reps = 36
+    # runs. At 1-3 minutes a call and 3-5 minutes a sandbox run that is about 1-1.5 hours. 180
+    # minutes leaves room for slow runs without letting a hang burn the 6-hour default; raise it
+    # if you dispatch with more reps or a bigger model.
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      # The API key is set only on the steps that need it (this one and the run steps), never at
+      # job level, so the install steps below (npm, the gitleaks download) cannot read it.
 
       - name: Check the API key
-        id: key
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           if [ -n "$ANTHROPIC_API_KEY" ]; then exit 0; fi
           echo "ANTHROPIC_API_KEY is not set; add it as a repository secret (Settings > Secrets and variables > Actions)." >> "$GITHUB_STEP_SUMMARY"
-          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            echo "::warning::ANTHROPIC_API_KEY is not set; the triggering test was skipped"
-            echo "skip=1" >> "$GITHUB_OUTPUT"
-          else
-            echo "::error::ANTHROPIC_API_KEY is not set; the eval cannot run"
-            exit 1
-          fi
+          echo "::error::ANTHROPIC_API_KEY is not set; the eval cannot run"
+          exit 1
 
       - name: Install the claude CLI
-        if: steps.key.outputs.skip != '1'
         run: |
           # pinned: no `curl | bash`; 2.1.308 is the version these evals were run with
           npm install -g @anthropic-ai/claude-code@2.1.308
           claude --version
 
       - name: Install pnpm and gitleaks (sandbox)
-        if: steps.key.outputs.skip != '1' && github.event_name != 'pull_request'
         run: |
           npm install -g pnpm@9.15.9
-          V=8.30.1
+          V=$GITLEAKS_VERSION
           dir=$(mktemp -d)
           base="https://github.com/gitleaks/gitleaks/releases/download/v${V}"
           curl -sSfL -o "$dir/gitleaks_${V}_linux_x64.tar.gz" "$base/gitleaks_${V}_linux_x64.tar.gz"
-          # the expected hash is pinned here: a checksums file from the same release page proves nothing
-          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $dir/gitleaks_${V}_linux_x64.tar.gz" | sha256sum -c -
+          # the expected hash is pinned in the workflow env: a checksums file from the same release page proves nothing
+          echo "$GITLEAKS_SHA256_LINUX_X64  $dir/gitleaks_${V}_linux_x64.tar.gz" | sha256sum -c -
           sudo tar -xzf "$dir/gitleaks_${V}_linux_x64.tar.gz" -C /usr/local/bin gitleaks
           gitleaks version
 
-      - name: Triggering test
-        if: steps.key.outputs.skip != '1' && github.event_name == 'pull_request'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python3 tests/eval/run.py --trigger --reps 3 --model haiku --out eval-out
-
-      - name: Scenarios
-        if: steps.key.outputs.skip != '1' && github.event_name != 'pull_request'
+      # Gates. A model is not deterministic, so a run is red only when the pass rate over valid
+      # runs falls below a per-model threshold (tests/eval/run.py --fail-under). Runs where the
+      # claude CLI errored or timed out are listed as invalid and left out of the rate; the step
+      # exits 3 only when no run was valid. Thresholds come from tests/RESULTS.md (3 to 5 runs per
+      # cell, so each sits a little under the measured rate and inside the Wilson interval):
+      #   haiku        0.60  measured 57/70 (81%) and 79/95 (83%) with skills, but 16/24 (67%, 95%
+      #                      interval 47-82%) on the held-out set and S3/S14 weak at 2-3/5;
+      #                      0.60 is under every measured haiku rate, so it trips on a real
+      #                      regression, not on one bad scenario.
+      #   sonnet/opus  0.85  measured 93-100% (70/70 and 93/95 to 94/95); 0.85 allows two or three
+      #                      misses in 19 scenarios x 3 reps and still catches a real drop.
+      #   triggering   0.90  36/36 and 60/60 on every model; one miss in 21 prompts x 3 is noise.
+      #   sandbox, hook and guard on  0.90  every run passed except one haiku add-lodash run that
+      #                      asked instead of running pnpm (RESULTS.md: 1 of about 27).
+      # Sandbox with enforcement off is informational, not a gate: it measures what the skills
+      # alone hold, and haiku fails 15 of 27 there by design (RESULTS.md), so it must not be red.
+      - name: Scenarios, triggering and sandbox
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           MODEL: ${{ inputs.model || 'haiku' }}
           SCENARIOS: ${{ inputs.scenarios || 'all' }}
           REPS: ${{ inputs.reps || '3' }}
         run: |
+          case "$MODEL" in
+            *haiku*) under=0.60 ;;
+            *) under=0.85 ;;
+          esac
+          echo "pass-rate thresholds for $MODEL: scenarios $under, triggering 0.90, sandbox (enforced) 0.90" >> "$GITHUB_STEP_SUMMARY"
+          status=0
+          worst() { [ "$1" -eq 0 ] && return 0; if [ "$status" -eq 0 ] || [ "$1" -lt "$status" ]; then status=$1; fi; }
           python3 tests/eval/run.py --scenarios "$SCENARIOS" --reps "$REPS" --model "$MODEL" \
-            --judge-model opus --jobs 4 --out eval-out || status=$?
-          python3 tests/eval/run.py --trigger --reps 3 --model "$MODEL" --out eval-out || status=$?
+            --judge-model opus --jobs 4 --fail-under "$under" --out eval-out || worst $?
+          python3 tests/eval/run.py --trigger --reps 3 --model "$MODEL" --fail-under 0.90 --out eval-out || worst $?
           git config --global user.name "eval bot"; git config --global user.email "eval@example.com"
-          python3 tests/eval/sandbox/run.py --reps 2 --model "$MODEL" --enforcement both --jobs 4 --out eval-out || status=$?
-          exit "${status:-0}"
+          python3 tests/eval/sandbox/run.py --reps 2 --model "$MODEL" --enforcement on --jobs 4 \
+            --fail-under 0.90 --out eval-out || worst $?
+          python3 tests/eval/sandbox/run.py --reps 2 --model "$MODEL" --enforcement off --jobs 4 \
+            --out eval-out || echo "sandbox with enforcement off exited $? (informational, not a gate)"
+          exit "$status"
 
       - name: Summary
-        if: always() && steps.key.outputs.skip != '1'
+        if: always()
         run: cat eval-out/*/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        if: always() && steps.key.outputs.skip != '1'
+        if: always()
         with:
           name: eval-out
           path: eval-out/
           if-no-files-found: ignore
+
+  notify:
+    name: open or update an issue when the scheduled run fails
+    needs: eval
+    if: ${{ always() && needs.eval.result == 'failure' && github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open or comment on the eval issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create eval --description "weekly eval below its threshold" --color 5319E7 2>/dev/null || true
+          body="The scheduled eval failed: $RUN_URL. Either a pass rate fell below its threshold (a real regression), no run was valid (CLI error, timeout, an agent that did nothing), or ANTHROPIC_API_KEY is missing or revoked. See the step summary and the eval-out artifact."
+          number=$(gh issue list --label eval --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --label eval --title "weekly eval is failing" --body "$body"
+          fi

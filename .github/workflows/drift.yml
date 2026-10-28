@@ -1,10 +1,15 @@
 name: drift
 
+# The live drift check reads paperplanehq/paperplane-engineering with the ORG_READ_TOKEN secret, so
+# it runs only on the schedule and on manual dispatch, never on pull_request: a pull request can
+# edit tests/drift/check.sh and print the token. The offline half (tests/scripts/test-drift.sh, a
+# fake gh) already runs on every pull request in validate.yml, so there is no PR trigger here and
+# no PR run that could pass without having checked anything. Pins and how to refresh them:
+# docs/ci-pins.md.
 on:
   schedule:
     - cron: "0 2 * * 1" # Mondays 02:00 UTC
   workflow_dispatch:
-  pull_request:
 
 permissions:
   contents: read
@@ -13,17 +18,17 @@ jobs:
   drift:
     name: skills match the engineering guide
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - name: Explain the token
         run: |
-          echo "Drift check reads paperplanehq/paperplane-engineering with the ORG_READ_TOKEN secret: a fine-grained PAT with read-only Contents on paperplanehq/paperplane-engineering. When the secret is not provided at all (forks), pull requests skip the check; an expired or revoked token fails every run, pull requests included. Failed scheduled runs open or update an issue labelled drift." >> "$GITHUB_STEP_SUMMARY"
+          echo "Drift check reads paperplanehq/paperplane-engineering with the ORG_READ_TOKEN secret: a fine-grained PAT with read-only Contents on paperplanehq/paperplane-engineering. It runs only on the schedule and on manual dispatch (never on pull requests: a pull request could read the secret). A missing, expired or revoked token fails the run. Failed scheduled runs open or update an issue labelled drift." >> "$GITHUB_STEP_SUMMARY"
       - name: Compare skills with the guide
         env:
           GH_TOKEN: ${{ secrets.ORG_READ_TOKEN }}
-          # Skip only when the secret is absent (forks). tests/drift/check.sh fails on a 401/403
-          # even with this set, so an expired token is not a green skip.
-          DRIFT_ALLOW_SKIP: ${{ github.event_name == 'pull_request' && secrets.ORG_READ_TOKEN == '' && '1' || '' }}
         run: bash tests/drift/check.sh
 
   notify:
@@ -31,6 +36,7 @@ jobs:
     needs: drift
     if: ${{ always() && needs.drift.result == 'failure' && github.event_name == 'schedule' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       issues: write
     steps:
