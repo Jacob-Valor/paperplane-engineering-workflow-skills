@@ -8,8 +8,8 @@
 #   input: {"tool_name":"Bash","tool_input":{"command":"..."},"cwd":"..."}
 #          {"tool_name":"Edit","tool_input":{"file_path":"..."},"cwd":"..."}
 # Exit codes: 0 allowed · 2 blocked, reason on stderr (Claude Code shows it to
-#             the agent) · 1 could not read the input (Claude Code runs the command),
-#             except input that names the Bash/Edit/Write tools, which fails closed (2)
+#             the agent) · 1 could not read the input and it names no tool we guard;
+#             input that names the Bash/Edit/Write tools but cannot be read fails closed (2)
 #
 # Limits: a best-effort guard for an agent that is not trying to evade it, not a
 # sandbox. The git pre-push hook (hooks/git-pre-push) and the server's branch
@@ -19,14 +19,14 @@
 #    followed, but "git push origin $B" with an unknown $B (or $(echo main)) is
 #    allowed while the branch you are on is not develop/uat/main, because blocking
 #    every variable blocked normal work; HEAD:$B is judged the same way. A literal
-#    protected name, "$B:develop", xargs-fed refs and a protected current branch
-#    are still refused. "$G push" is only caught when the next word is push,
-#    merge or pr, and "$GH api ..." is checked as gh;
+#    protected name, "$B:develop", ${B:-default} forms, xargs-fed refs and a protected
+#    current branch are still refused. "$G push" is only caught when the next word
+#    is push, merge or pr, and "$GH api ..." is checked as gh;
 #  - commands built from text it cannot read: files over 64KB, binary files, scripts
 #    nested more than 3 deep, files that do not exist yet (a file this same command
-#    wrote is scanned), stdin from a file, aliases, shell functions defined elsewhere,
-#    GIT_SSH_COMMAND, a hook an earlier command wrote, git config include.path
-#    files;
+#    wrote is scanned), stdin from a file, shell aliases, shell functions defined
+#    elsewhere, GIT_SSH_COMMAND, a hook an earlier command wrote, git config
+#    include.path files (git aliases are expanded; "!" shell aliases are refused);
 #  - eval/source of well-known init generators (ssh-agent -s, direnv export, pyenv
 #    init, brew shellenv, kubectl completion, ...) is allowed; direnv runs .envrc,
 #    which an agent could have written;
@@ -44,8 +44,8 @@
 #  - size: over 128KB, over 6000 statements or $( ) nested over 64 deep the guard
 #    stops parsing; it then refuses ("command too large to check; split it") when
 #    the text names git, gh or a protected path, and lets it run otherwise;
-#  - a hook that crashes (exit 1 or other) or times out (60s) lets the command run.
-#    The installed command itself fails closed (exit 2) when this file is missing.
+#  - a hook that times out (60s) lets the command run. The installed command fails
+#    closed (exit 2) when this file is missing or exits with anything but 0 or 2.
 set -uo pipefail
 export LC_ALL=C
 
@@ -78,6 +78,7 @@ sys.stdout.write(d if isinstance(d, str) else "")' "$@"
   fi
 }
 unreadable() { echo "paperplane guard: could not read the hook input; command not checked" >&2; exit 1; }
+unreadable_closed() { echo "paperplane guard: could not read the $tool call's input; refusing to run it unchecked" >&2; exit 2; }
 unreadable_tool() { # the input is not JSON we can parse: still block it when it names a tool we guard
   local t=${json//[[:space:]]/} name=""
   [ -z "$t" ] || [ "$t" = null ] && exit 0 # no tool call at all
@@ -105,9 +106,9 @@ if [ "$ftool" -eq 1 ]; then
   cmd=$(STRICT=1 field tool_input file_path) || cmd=""
   [ -n "$cmd" ] || cmd=$(STRICT=1 field tool_input notebook_path) || cmd=""
 else
-  cmd=$(STRICT=1 field tool_input command) || unreadable # a command we cannot read is not a pass
+  cmd=$(STRICT=1 field tool_input command) || unreadable_closed # a command we cannot read is not a pass
 fi
-cwd=$(field cwd) || unreadable
+cwd=$(field cwd) || unreadable_closed
 edir=${cwd:-$PWD} # directory the command runs in; cd/pushd move it
 gdir=$edir        # directory of the git command being checked (git -C)
 
@@ -125,14 +126,24 @@ pnpm_at() { # pnpm_at <dir>: 0 if dir or its repo root has pnpm-lock.yaml
   PNPM_CACHE+="$1=$hit"$'\n'
   [ "$hit" = 1 ]
 }
-resolve_dir() { # resolve_dir <arg>: sets RD to the absolute path of an existing dir under edir, else fails (no fork)
+resolve_dir() { # resolve_dir <arg> [base]: sets RD to the absolute path of an existing dir under base (edir), else fails (no fork)
   local p=$1 old=$PWD
-  case "$p" in ''|*'$'*|*'`'*|'~'*|-) return 1 ;; /*) ;; *) p=$edir/$p ;; esac
+  case "$p" in '~') p=${HOME:-'~'} ;; \~/*) [ -n "${HOME:-}" ] && p=$HOME/${p#'~/'} ;; esac
+  case "$p" in ''|*'$'*|*'`'*|'~'*|-) return 1 ;; /*) ;; *) p=${2:-$edir}/$p ;; esac
   [ -d "$p" ] || return 1
   cd -P "$p" 2>/dev/null || return 1
   RD=$PWD
   cd "$old" 2>/dev/null || cd /
   return 0
+}
+move_dir() { # move_dir <arg> <base>: sets ND to where cd/git -C goes; a dir that does not exist (yet) or
+  # cannot be read keeps its text, so the branch lookup there finds nothing and fails closed
+  if resolve_dir "$1" "$2"; then ND=$RD; return; fi
+  case "$1" in
+    ''|-) ND="$2/?unknown$SOH" ;;
+    /*) norm_path "$1"; ND=$NP ;;
+    *) norm_path "$2/$1"; ND=$NP ;;
+  esac
 }
 
 reason=""
@@ -150,7 +161,7 @@ R_SETTINGS="repo settings belong to the CTO; do not change them with gh repo edi
 R_REFAPI="creating, moving or deleting develop/uat/main or release refs, tags and releases through the API skips the push checks; a human does that"
 R_CLEANX="git clean -x/-X also deletes ignored files such as .claude/settings.local.json (this guard's own settings); use git clean -fd, or -n to preview"
 R_PNPM="this repo uses pnpm (pnpm-lock.yaml); use pnpm install, pnpm add or pnpm dlx instead"
-R_GITCONFIG="core.hooksPath, alias.* and GIT_CONFIG_*/GIT_DIR/GIT_EXEC_PATH skip the repo's hooks or hide the real command; run plain git"
+R_GITCONFIG="core.hooksPath, alias.* (\"!\" shell aliases above all), paperplane.* and GIT_CONFIG_*/GIT_DIR/GIT_EXEC_PATH skip the repo's hooks or hide the real command; run plain git"
 R_PLUMBING="git send-pack skips the pre-push hook; use git push"
 R_REFSPEC="refspecs with wildcards, {braces} or \$'...' can reach develop/uat/main; name the branch"
 R_GHEXT="gh aliases and extensions hide or run other commands; use plain gh"
@@ -241,6 +252,44 @@ norm_path() { # norm_path <path>: sets NP to the path with //, /./ and /../ coll
   done
   NP=${out:-/}
 }
+PROT_TREES=""; PROT_PARENTS="" # "<dir>\n" lines: folders holding the guard itself, wherever it is installed
+prot_add() { # prot_add <tree|parent> <dir>: the path as written and with symlinks resolved
+  local old=$PWD
+  [ -n "$2" ] && [ "$2" != / ] || return 0
+  norm_path "$2"
+  if [ "$1" = tree ]; then PROT_TREES+="$NP"$'\n'; else PROT_PARENTS+="$NP"$'\n'; fi
+  if [ -d "$NP" ] && cd -P "$NP" 2>/dev/null; then
+    if [ "$1" = tree ]; then PROT_TREES+="$PWD"$'\n'; else PROT_PARENTS+="$PWD"$'\n'; fi
+    cd "$old" 2>/dev/null || cd /
+  fi
+}
+self_file=${BASH_SOURCE[0]:-$0}
+case "$self_file" in /*) ;; *) self_file=$PWD/$self_file ;; esac
+for _ in 1 2 3 4 5 6 7 8; do
+  [ -L "$self_file" ] || break
+  self_tgt=$(readlink "$self_file") || break
+  case "$self_tgt" in /*) self_file=$self_tgt ;; *) self_file=${self_file%/*}/$self_tgt ;; esac
+done
+self_dir=${self_file%/*}
+prot_add tree "$self_dir"
+prot_add parent "${self_dir%/*}"
+[ "${self_file##*/}" = claude-guard.sh ] && prot_add tree "${self_dir%/*}/scripts" # the skill: hooks/ and scripts/
+omp_agent=${PI_CODING_AGENT_DIR:-${HOME:+$HOME/.omp/agent}}
+if [ -n "$omp_agent" ]; then prot_add tree "$omp_agent/hooks/pre"; prot_add parent "$omp_agent/hooks"; prot_add parent "$omp_agent"; fi
+prot_self() { # prot_self <absolute path> <dir 0|1>: inside a folder that holds the guard
+  local rest=$PROT_TREES d
+  while [ -n "$rest" ]; do
+    d=${rest%%$'\n'*}; rest=${rest#*$'\n'}
+    case "$1" in "$d"|"$d"/*) return 0 ;; esac
+  done
+  [ "$2" = 1 ] || return 1
+  rest=$PROT_PARENTS
+  while [ -n "$rest" ]; do
+    d=${rest%%$'\n'*}; rest=${rest#*$'\n'}
+    [ "$1" = "$d" ] && return 0
+  done
+  return 1
+}
 note_write() { # note_write <path> <text> <append 0|1>: remember what this command wrote, to scan it if it is run later
   local old=""
   case "$1" in ''|*"$SOH"*|*"$STX"*|*"$ETX"*|/dev/*) return ;; esac
@@ -282,6 +331,7 @@ cur_branch() { # sets CB to the branch HEAD is on; "?" when an earlier part of t
   local VB key="$GDOVR|$gdir" hit
   CB=""
   if vb_get; then CB=$VB; return; fi
+  [ -z "$GDOVR" ] && [ ! -d "$gdir" ] && { CB='?'; return; } # cd/git -C into a dir that does not exist yet
   case "$CB_CACHE" in
     *$'\n'"$key="*) hit=${CB_CACHE#*$'\n'"$key="}; CB=${hit%%$'\n'*}; return ;;
   esac
@@ -365,6 +415,7 @@ check_push() {
     pos=$((pos+1))
     [ "$pos" -eq 1 ] && remote=$a
     if [ "$pos" -gt 1 ]; then
+      case "$a" in *"$SOH{"*) block "$R_DYNPUSH"; return ;; esac # ${B-main}, ${B:-develop}: the default can be protected
       case "$a" in *"$SOH"*|*"$STX"*|*"$ETX"*) check_dynref "$a" ;; *) check_refspec "$a" ;; esac
       [ -n "$reason" ] && return
     fi
@@ -416,8 +467,31 @@ check_add() {
   done
 }
 
+git_builtin() { # commands git runs itself; an alias of the same name is never used
+  case "$1" in
+    add|am|apply|archive|bisect|blame|branch|bundle|cat-file|check-attr|check-ignore|check-ref-format|checkout|cherry|cherry-pick|clean|clone|commit|config|count-objects) return 0 ;;
+    describe|diff|diff-files|diff-index|diff-tree|difftool|fetch|for-each-ref|format-patch|fsck|gc|grep|hash-object|help|init|log|ls-files|ls-remote|ls-tree|maintenance) return 0 ;;
+    merge|merge-base|merge-tree|mv|notes|pull|push|range-diff|read-tree|rebase|reflog|remote|repack|replace|rerere|reset|restore|rev-list|rev-parse|revert|rm) return 0 ;;
+    send-pack|shortlog|show|show-branch|show-ref|sparse-checkout|stage|stash|status|submodule|switch|symbolic-ref|tag|update-index|update-ref|var|version|whatchanged|worktree|filter-branch) return 0 ;;
+  esac
+  return 1
+}
+alias_of() { # alias_of <name> <-c aliases>: sets AV to what git runs for "git <name>"; fails when it is no alias
+  local rest=$2 e
+  AV=""
+  shopt -s nocasematch
+  while [ -n "$rest" ]; do # the last -c wins; the list is newest first
+    e=${rest%%$'\n'*}; rest=${rest#*$'\n'}
+    case "$e" in "alias.$1="*) AV=${e#*=}; shopt -u nocasematch; return 0 ;; esac
+  done
+  shopt -u nocasematch
+  case "$1" in *[!A-Za-z0-9_-]*|'') return 1 ;; esac
+  fork_budget
+  AV=$(gitc config --get "alias.$1" 2>/dev/null) && [ -n "$AV" ]
+}
+
 check_git() {
-  local k a
+  local k a cal=""
   gdir=$edir
   GDOVR=""
   if [ -n "$SEG_GD" ]; then GDOVR=$SEG_GD
@@ -425,13 +499,16 @@ check_git() {
   while [ $# -gt 0 ]; do
     case "$1" in
       -c) hooky "${2:-}" && { block "$R_GITCONFIG"; return; }
+        case "${2:-}" in [Aa][Ll][Ii][Aa][Ss].*=*) cal="$2"$'\n'"$cal" ;; esac
         shift; [ $# -gt 0 ] && shift ;;
       --config-env)
         hooky_kv "${2%%=*}" '?unknown' && { block "$R_GITCONFIG"; return; }
         shift; [ $# -gt 0 ] && shift ;;
-      -c?*) hooky "${1#-c}" && { block "$R_GITCONFIG"; return; }; shift ;;
+      -c?*) hooky "${1#-c}" && { block "$R_GITCONFIG"; return; }
+        case "${1#-c}" in [Aa][Ll][Ii][Aa][Ss].*=*) cal="${1#-c}"$'\n'"$cal" ;; esac
+        shift ;;
       --config-env=*) a=${1#--config-env=}; hooky_kv "${a%%=*}" '?unknown' && { block "$R_GITCONFIG"; return; }; shift ;;
-      -C) resolve_dir "${2:-}" && gdir=$RD; shift; [ $# -gt 0 ] && shift ;;
+      -C) move_dir "${2:-}" "$gdir"; gdir=$ND; shift; [ $# -gt 0 ] && shift ;;
       --git-dir) resolve_dir "${2:-}" && GDOVR=$RD; shift; [ $# -gt 0 ] && shift ;;
       --git-dir=*) resolve_dir "${1#--git-dir=}" && GDOVR=$RD; shift ;;
       --work-tree|--namespace) shift; [ $# -gt 0 ] && shift ;;
@@ -442,6 +519,17 @@ check_git() {
   [ $# -gt 0 ] || return 0
   local sub=$1; shift
   case "$sub" in *"$SOH"*|*"$STX"*) block "$R_DYNCMD"; return ;; esac
+  if ! git_builtin "$sub" && alias_of "$sub" "$cal"; then # git co ...: judge what the alias runs
+    case "${AV#"${AV%%[![:space:]]*}"}" in '!'*) block "$R_GITCONFIG"; return ;; esac
+    local pre="" q e
+    k=$cal
+    while [ -n "$k" ]; do e=${k%%$'\n'*}; k=${k#*$'\n'}; printf -v q '%q' "$e"; pre=" -c $q$pre"; done
+    [ -n "$GDOVR" ] && { printf -v q '%q' "$GDOVR"; pre=" --git-dir=$q$pre"; }
+    printf -v q '%q' "$gdir"; pre="git -C $q$pre $AV"
+    [ $# -gt 0 ] && { printf -v q '%q ' "$@"; pre+=" $q"; }
+    check_string "$pre"
+    return
+  fi
   case "$sub" in
     push) check_push "$@" ;;
     branch) check_branch "$@"; track_branch "$@" ;;
@@ -618,7 +706,9 @@ hooky_kv() { # hooky_kv <key> <value>: true for settings that skip the hook or a
     push.default) case "$v" in matching*|'?unknown') r=0 ;; esac ;;
     remote.*.push) r=0 ;;
     branch.*.merge) is_protected_branch "$v" && r=0 ;;
-    alias.*) case "$v" in *push*|*merge*|*verify*|*hookspath*|'?unknown') r=0 ;; esac ;;
+    alias.*) case "$v" in *push*|*merge*|*verify*|*hookspath*|'?unknown') r=0 ;; esac
+      case "${v#"${v%%[![:space:]]*}"}" in '!'*) r=0 ;; esac ;; # "!cmd" runs a shell command the guard never sees
+    paperplane.*) r=0 ;; # paperplane.blockForcePush: the pre-push hook's own switch
   esac
   shopt -u nocasematch
   return $r
@@ -637,18 +727,22 @@ check_noverify() {
 }
 
 check_config() { # writing core.hooksPath, hook-skipping aliases or push targets is blocked; reading stays allowed
-  local a n=0 ro=0 k="" v=""
-  case "${1:-}" in get|list|unset) return 0 ;; set) shift ;; esac
+  local a n=0 ro=0 del=0 k="" v=""
+  case "${1:-}" in get|list) return 0 ;; unset|remove-section|rename-section) ro=1; del=1; shift ;; set) shift ;; esac
   while [ $# -gt 0 ]; do
     a=$1; shift
     case "$a" in
-      --get|--get-all|--get-regexp|--get-urlmatch|--get-color|--get-colorbool|-l|--list|--unset|--unset-all|--remove-section|--rename-section|--edit|-e) ro=1 ;;
+      --unset|--unset-all|--remove-section|--rename-section) ro=1; del=1 ;;
+      --get|--get-all|--get-regexp|--get-urlmatch|--get-color|--get-colorbool|-l|--list|--edit|-e) ro=1 ;;
       --file|-f|--blob|--default|--type|-t) [ $# -gt 0 ] && shift ;;
       -*" "*) if [ "$n" -eq 1 ]; then n=2; v=$a; fi ;; # alias.x "-c core.hooksPath=/dev/null status": a value, not an option
       -*) ;;
       *) n=$((n+1)); if [ "$n" -eq 1 ]; then k=$a; elif [ "$n" -eq 2 ]; then v=$a; fi ;;
     esac
   done
+  if [ "$del" -eq 1 ]; then
+    case "$k" in [Pp][Aa][Pp][Ee][Rr][Pp][Ll][Aa][Nn][Ee]|[Pp][Aa][Pp][Ee][Rr][Pp][Ll][Aa][Nn][Ee].*) block "$R_GITCONFIG" ;; esac
+  fi
   [ "$ro" -eq 0 ] && [ "$n" -ge 2 ] && hooky_kv "$k" "$v" && block "$R_GITCONFIG"
   return 0
 }
@@ -677,6 +771,11 @@ check_gh() {
     case "$a" in -R|--repo) skip=1; continue ;; -*) continue ;; esac
     if [ -z "$p1" ]; then p1=$a; elif [ -z "$p2" ]; then p2=$a; else break; fi
   done
+  case "$p1" in *"$SOH"*|*"$STX"*|*"$ETX"*) block "$R_DYNCMD"; return ;; esac
+  case "$p1" in
+    pr|repo|secret|variable|workflow|ruleset|alias|extension|ext|release)
+      case "$p2" in *"$SOH"*|*"$STX"*|*"$ETX"*) block "$R_DYNCMD"; return ;; esac ;;
+  esac
   case "$p1 $p2" in
     "pr merge") block "$R_MERGE" ;;
     "repo edit"|"repo delete"|"repo archive"|"repo unarchive"|"repo rename"|"secret set"|"secret delete"|"secret remove"|"variable set"|"variable delete"|"variable remove"|"workflow disable") block "$R_SETTINGS" ;;
@@ -701,7 +800,7 @@ check_gh() {
     api*)
       # Merges and approvals go through POST (REST or graphql), so match the
       # endpoint or mutation; a REST merge endpoint without fields or -X is a GET.
-      local method="" fields=0 merge_ep=0 approve=0 review=0 hidden=0 graphql=0 inp=0 ep="" valskip=0 isval
+      local method="" fields=0 merge_ep=0 approve=0 review=0 hidden=0 hevent=0 graphql=0 inp=0 ep="" valskip=0 isval n
       while [ $# -gt 0 ]; do
         a=$1; shift
         isval=$valskip; valskip=0
@@ -713,22 +812,25 @@ check_gh() {
           -f?*|-F?*|--field=*|--raw-field=*|--input=*) fields=1 ;;
           -H|--header|-q|--jq|-t|--template|--cache|--hostname|-p|--preview) valskip=1 ;;
         esac
+        n=${a%%\?*} # repos/o/r/pulls/1/merge?merge_method=squash and .../merge/ are the merge endpoint
+        while [ "${n%/}" != "$n" ]; do n=${n%/}; done
         if [ "$isval" -eq 0 ]; then
-          case "$a" in -*|api) ;; *) [ -n "$ep" ] || ep=$a ;; esac
+          case "$a" in -*|api) ;; *) [ -n "$ep" ] || ep=$n ;; esac
         fi
-        case "$a" in --input|--input=*) inp=1; hidden=1 ;; *query=@*) hidden=1 ;; graphql) graphql=1 ;; esac
+        case "$a" in --input|--input=*) inp=1; hidden=1 ;; *query=@*|*query=*"$SOH"*|*query=*"$STX"*|*query=*"$ETX"*) hidden=1 ;; graphql) graphql=1 ;; esac
+        case "$a" in *event=@*|*event=*"$SOH"*|*event=*"$STX"*|*event=*"$ETX"*) hevent=1 ;; esac
         case "$a" in *mergePullRequest*|*[Aa]utoMerge*|*mergeBranch*) block "$R_MERGE"; return ;; esac
         case "$a" in
           *[Uu]pdateRepository*|*[Dd]eleteRepository*|*[Aa]rchiveRepository*|*[Uu]narchiveRepository*|*BranchProtectionRule*|*[Rr]uleset*|*[Aa]ddCollaborator*|*[Cc]reateEnvironment*) block "$R_SETTINGS"; return ;;
           *[Cc]reateRef*|*[Uu]pdateRef*|*[Dd]eleteRef*|*[Cc]reateRelease*|*[Uu]pdateRelease*|*[Dd]eleteRelease*|*[Cc]reateTag*) block "$R_REFAPI"; return ;;
         esac
-        case "$a" in */merge|*/merges) merge_ep=1 ;; esac
+        case "$n" in */merge|*/merges) merge_ep=1 ;; esac
         case "$a" in *APPROVE*) approve=1 ;; esac
         case "$a" in */reviews*|*PullRequestReview*) review=1 ;; esac
       done
       case "$method" in [Gg][Ee][Tt]) fields=0 ;; ?*) fields=1 ;; esac
       [ "$graphql" -eq 1 ] && [ "$hidden" -eq 1 ] && ! case "$method" in [Gg][Ee][Tt]) true ;; *) false ;; esac && { block "$R_GHFILE"; return; }
-      [ "$review" -eq 1 ] && [ "$inp" -eq 1 ] && [ "$fields" -eq 1 ] && { block "$R_APPROVE"; return; }
+      [ "$review" -eq 1 ] && { [ "$inp" -eq 1 ] || [ "$hevent" -eq 1 ]; } && [ "$fields" -eq 1 ] && { block "$R_APPROVE"; return; }
       [ "$merge_ep" -eq 1 ] && [ "$fields" -eq 1 ] && { block "$R_MERGE"; return; }
       [ "$approve" -eq 1 ] && [ "$review" -eq 1 ] && { block "$R_APPROVE"; return; }
       api_class "$ep" "$fields" ;;
@@ -736,9 +838,11 @@ check_gh() {
 }
 
 is_cmd() { # words a wrapper (sudo, env, xargs, ssh, ...) may be running
+  local b=${1##*/}
   case "$1" in ./*) return 0 ;; esac
-  case "${1##*/}" in git|gh|npm|npx|yarn|bun|bunx|find|bash|sh|zsh|dash|ksh|mksh|ash|fish|csh|tcsh|eval|source) return 0 ;; esac
-  case "${1##*/}" in rm|mv|cp|tee|sponge|truncate|chmod|chown|chgrp|unlink|shred|ln|install|rsync|dd|sed|gsed|perl|ruby|awk|gawk|python|python2|python3|python3.*|node|nodejs) return 0 ;; esac
+  b=${b#=}
+  case "$b" in git|git-?*|gh|npm|npx|yarn|bun|bunx|find|bash|sh|zsh|dash|ksh|mksh|ash|fish|csh|tcsh|eval|source|trap) return 0 ;; esac
+  case "$b" in rm|mv|cp|tee|sponge|truncate|chmod|chown|chgrp|unlink|shred|ln|install|rsync|dd|sed|gsed|perl|ruby|awk|gawk|python|python2|python3|python3.*|node|nodejs) return 0 ;; esac
   return 1
 }
 
@@ -807,11 +911,14 @@ prot_lit() { # prot_lit <path> [dir]: a guard/settings/hook file (or, with dir=1
     case "$p" in *//*) p=${p//\/\//\/} ;; */./*) p=${p//\/.\//\/} ;; *) break ;; esac
   done
   p=${p%/}
+  case "$p" in /*) prot_self "$p" "${2:-0}" && return 0 ;; esac
   case "$p" in
     .claude/hooks/paperplane-guard.sh|*/.claude/hooks/paperplane-guard.sh) return 0 ;;
     .claude/settings.json|*/.claude/settings.json|.claude/settings.local.json|*/.claude/settings.local.json) return 0 ;;
     .omp/hooks/pre/paperplane-guard.ts|*/.omp/hooks/pre/paperplane-guard.ts) return 0 ;;
     .omp/hooks/pre/paperplane-guard.sh|*/.omp/hooks/pre/paperplane-guard.sh) return 0 ;;
+    */.omp/agent/hooks/pre/paperplane-guard.ts|*/.omp/agent/hooks/pre/paperplane-guard.sh) return 0 ;;
+    .git/config|*/.git/config|.git/config.worktree|*/.git/config.worktree) return 0 ;;
     .git/hooks/pre-push|*/.git/hooks/pre-push|.husky/pre-push|*/.husky/pre-push) return 0 ;;
   esac
   if [ "${2:-0}" = 1 ]; then
@@ -827,6 +934,7 @@ is_prot() { # is_prot <path> [dir]: does this argument name (or glob to) a prote
   local p=$1 abs m
   case "$p" in ''|-*) return 1 ;; esac
   case "$p" in *"$SOH"*|*"$STX"*|*"$ETX"*) prot_lit "$p" "${2:-0}"; return ;; esac # "$DIR/.claude/settings.json": judge the part we can read
+  case "$p" in '~') p=${HOME:-'~'} ;; \~/*) [ -n "${HOME:-}" ] && p=$HOME/${p#'~/'} ;; esac
   case "$p" in /*) abs=$p ;; *) abs=$edir/$p ;; esac
   prot_lit "$p" "${2:-0}" && return 0
   prot_lit "$abs" "${2:-0}" && return 0
@@ -837,7 +945,7 @@ is_prot() { # is_prot <path> [dir]: does this argument name (or glob to) a prote
   case "$p" in
     *'*'*|*'?'*|*'['*|*'{'*)
       while IFS= read -r m; do
-        [ -n "$m" ] && prot_lit "$m" "${2:-0}" && return 0
+        [ -n "$m" ] && { prot_lit "$m" "${2:-0}" || prot_lit "$edir/$m" "${2:-0}"; } && return 0
       done <<EOF
 $(cd "$edir" 2>/dev/null && compgen -G "$p")
 EOF
@@ -1021,15 +1129,16 @@ check_words() {
   set -- "${w[@]}"
   first=$1
   for a in "$@"; do
-    case "$a" in PAPERPLANE_ALLOW_NO_GITLEAKS=*) block "$R_SELF" ;; esac
+    case "$a" in PAPERPLANE_ALLOW_NO_GITLEAKS=*|PAPERPLANE_SKILL_DIR=*) block "$R_SELF" ;; esac
   done
   case "$first" in
     export|unset|declare|typeset|readonly|env|set|local)
-      for a in "$@"; do case "$a" in PAPERPLANE_ALLOW_NO_GITLEAKS*) block "$R_SELF" ;; esac; done ;;
+      for a in "$@"; do case "$a" in PAPERPLANE_ALLOW_NO_GITLEAKS*|PAPERPLANE_SKILL_DIR*) block "$R_SELF" ;; esac; done ;;
   esac
   case "$first" in
     export|declare|typeset|readonly|local) # export BRANCH=feature/x: a literal value later $BRANCH can be judged by
       for a in "$@"; do
+        case "$a" in GIT_CONFIG|GIT_CONFIG=*|GIT_CONFIG_*|GIT_EXEC_PATH|GIT_EXEC_PATH=*) block "$R_GITCONFIG" ;; esac
         case "$a" in [A-Za-z_]*=*) skipvar "$a" && block "$R_SKIPHOOK"; var_set "${a%%=*}" "${a#*=}" ;; esac
       done ;;
     unset) for a in "$@"; do case "$a" in -*) ;; *) var_unset "$a" ;; esac; done ;;
@@ -1037,17 +1146,17 @@ check_words() {
   while [ $# -gt 0 ]; do
     case "$1" in
       GIT_DIR=*) if resolve_dir "${1#GIT_DIR=}"; then sgd=$RD; else envbad=1; fi; shift ;;
-      GIT_CONFIG_*=*|GIT_EXEC_PATH=*) envbad=1; shift ;;
+      GIT_CONFIG=*|GIT_CONFIG_*=*|GIT_EXEC_PATH=*) envbad=1; shift ;;
       [A-Za-z_]*=*) skipvar "$1" && skipenv=1; asg+=("$1"); shift ;;
       function) shift; [ $# -gt 0 ] && shift ;; # function f { ...; }: the body is the commands after the brace
-      if|then|else|elif|fi|do|done|while|until|for|select|case|'esac'|'!'|'{'|'}') shift ;;
-      sudo|doas|env|command|builtin|nohup|time|exec|nice|ionice|setsid|stdbuf|xargs|watch|ssh|su|script|runuser|flock|busybox|chroot|docker|docker-compose|podman|nerdctl|kubectl|parallel|pkexec|caffeinate|arch|gosu|su-exec|*/sudo|*/doas|*/env|*/nohup|*/nice|*/xargs|*/docker-compose|*/ssh|*/watch|*/setsid|*/stdbuf|*/ionice|*/time|*/command)
+      if|then|else|elif|fi|do|done|while|until|for|select|case|'esac'|'!'|'{'|'}'|noglob|nocorrect) shift ;;
+      sudo|doas|env|command|builtin|nohup|time|exec|nice|ionice|setsid|stdbuf|xargs|watch|ssh|su|script|runuser|flock|busybox|chroot|docker|docker-compose|podman|nerdctl|kubectl|parallel|pkexec|caffeinate|arch|gosu|su-exec|unbuffer|chronic|*/sudo|*/doas|*/env|*/nohup|*/nice|*/xargs|*/docker-compose|*/ssh|*/watch|*/setsid|*/stdbuf|*/ionice|*/time|*/command|*/unbuffer|*/chronic)
         case "$1" in xargs|*/xargs|parallel) viax=1 ;; esac
         shift; wrapped=1
         while [ $# -gt 0 ] && ! is_cmd "$1"; do
           case "$1" in
             GIT_DIR=*) if resolve_dir "${1#GIT_DIR=}"; then sgd=$RD; else envbad=1; fi ;;
-            GIT_CONFIG_*=*|GIT_EXEC_PATH=*) envbad=1 ;;
+            GIT_CONFIG=*|GIT_CONFIG_*=*|GIT_EXEC_PATH=*) envbad=1 ;;
           esac
           skipvar "$1" && skipenv=1
           [ "$skipenv" -eq 1 ] && hook_tool "$1" && block "$R_SKIPHOOK"
@@ -1075,6 +1184,7 @@ check_words() {
     return 0
   fi
   local cmd0=$1 name=${1##*/}
+  case "$name" in =?*) name=${name#=} ;; esac # zsh: =git is the git on PATH
   shift
   case "$cmd0" in
     *"$SOH"*|*"$STX"*) dyn_cmd "$@" && return ;;
@@ -1113,12 +1223,18 @@ check_words() {
   fi
   case "$cmd0" in */*) check_script auto "$cmd0" ;; esac
   XARGS=$viax; SEG_GD=$sgd
-  [ "$skipenv" -eq 1 ] && hook_tool "$cmd0" && block "$R_SKIPHOOK"
+  [ "$skipenv" -eq 1 ] && hook_tool "$name" && block "$R_SKIPHOOK"
   case "$name" in
     git) [ "$envbad" -eq 1 ] && { block "$R_GITCONFIG"; return; }; check_git "$@" ;;
+    git-?*) [ "$envbad" -eq 1 ] && { block "$R_GITCONFIG"; return; }; check_git "${name#git-}" "$@" ;; # git-push is git push
+    trap) # trap 'cmd' EXIT: the command runs later
+      [ "${1:-}" = -- ] && shift
+      case "${1:-}" in -p|-l|-|'') ;; *"$STX"*|"\$$SOH"*) block "$R_HIDDEN"; return ;; *) check_string "$1" ;; esac ;;
     gh) check_gh "$@" ;;
     find) check_find "$@" ;;
-    cd|pushd) k=""; for a in "$@"; do case "$a" in -*) ;; *) k=$a; break ;; esac; done; resolve_dir "$k" && edir=$RD; return 0 ;;
+    cd|pushd)
+      k='~'; for a in "$@"; do case "$a" in -) k=-; break ;; -*) ;; *) k=$a; break ;; esac; done
+      move_dir "$k" "$edir"; edir=$ND; return 0 ;;
     python|python2|python3|python3.*|node|nodejs|ruby|perl) check_interp "$@" ;;
     pnpm|npm|yarn|bun) # pnpm exec git push ...: check what it runs
       if [ $# -gt 0 ]; then
@@ -1137,25 +1253,32 @@ check_words() {
       [ "$ps" -eq 1 ] && { block "$R_HIDDEN"; return; }
       case "$name" in
         eval)
+          [ "${1:-}" = -- ] && shift
           case "$*" in *"$STX"*|"\$$SOH"*) block "$R_HIDDEN"; return ;; esac
           check_string "$*" ;;
         source|.) [ $# -gt 0 ] && check_script shell "$1" ;;
         bash|sh|zsh|dash|ksh|mksh|ash|fish|csh|tcsh)
-          local sflag=0
-          while [ $# -gt 0 ]; do
+          local sflag=0 cflag=0
+          while [ $# -gt 0 ]; do # sh -c -e 'cmd': the command is the first word after the options
             case "$1" in
-              -c|-[a-z]*c)
-                if [ $# -gt 1 ]; then
-                  case "$2" in *"$STX"*|"\$$SOH"*) block "$R_HIDDEN"; return ;; esac
-                  check_string "$2"
-                fi
-                return ;;
-              -s) sflag=1; shift ;;
+              --) shift; break ;;
+              --rcfile|--init-file) shift; [ $# -gt 0 ] && shift ;;
+              --*) shift ;;
               -o|+o|-O|+O) shift; [ $# -gt 0 ] && shift ;;
-              -*) shift ;;
-              *) [ "$sflag" -eq 0 ] && { check_script shell "$1"; return; }; break ;;
+              -s) sflag=1; shift ;;
+              -*c*) cflag=1; shift ;;
+              -*|+*) shift ;;
+              *) break ;;
             esac
           done
+          if [ "$cflag" -eq 1 ]; then
+            if [ $# -gt 0 ]; then
+              case "$1" in *"$STX"*|"\$$SOH"*) block "$R_HIDDEN"; return ;; esac
+              check_string "$1"
+            fi
+            return
+          fi
+          [ $# -gt 0 ] && [ "$sflag" -eq 0 ] && { check_script shell "$1"; return; }
           # no script and no -c: the shell reads its commands from stdin
           [ "$PIPE_IN" -eq 1 ] && { block "$R_HIDDEN"; return; }
           [ -n "$PIPE_TEXT" ] && check_string "$PIPE_TEXT"

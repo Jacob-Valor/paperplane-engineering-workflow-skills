@@ -9,13 +9,14 @@
 #                       the omp adapter .omp/hooks/pre/paperplane-guard.ts (omp ignores Claude Code
 #                       hooks); commit all three files. Run it again to refresh the copies.
 # Keeps every other setting. Running it again does not add a second entry.
-# The installed command fails closed: if the guard script is missing or moved it exits 2 (block).
+# The installed command fails closed: if the guard script is missing or moved, or exits with anything
+# but 0 (allow) or 2 (block), it exits 2 (block).
 # --uninstall removes only the paperplane guard entries (and the --commit copy).
 # Exit codes: 0 done · 1 settings file unreadable or not writable ·
 #             2 usage error, not in a git repo, or neither jq nor python3
 set -uo pipefail
 
-usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; }
 scope=project
 uninstall=0
 for arg in "$@"; do
@@ -30,10 +31,12 @@ for arg in "$@"; do
 done
 
 guard="$(cd "$(dirname "$0")" && pwd)/claude-guard.sh"
-# Claude Code treats "command not found" (127) as non-blocking, so a moved guard would switch every
-# check off. The command checks the file itself and exits 2 (block) with a reason when it is gone.
+# Claude Code treats "command not found" (127) and any exit but 2 as non-blocking, so a moved or crashing
+# guard would switch every check off. The command checks the file itself and turns any other exit into 2.
 missing_msg='paperplane guard missing; refusing to run unchecked (re-run install-claude-hook.sh)'
-command="f=$(printf '%q' "$guard"); [ -f \"\$f\" ] || { echo \"$missing_msg: \$f\" >&2; exit 2; }; exec bash \"\$f\""
+# shellcheck disable=SC2016  # expanded by the shell that runs the hook
+run='bash "$f" || { s=$?; [ "$s" -eq 2 ] || echo "paperplane guard failed (exit $s); refusing to run the call unchecked" >&2; exit 2; }'
+command="f=$(printf '%q' "$guard"); [ -f \"\$f\" ] || { echo \"$missing_msg: \$f\" >&2; exit 2; }; $run"
 
 if [ "$scope" = user ]; then
   [ -n "${HOME:-}" ] || { echo "HOME is not set"; exit 2; }
@@ -47,7 +50,7 @@ if [ "$scope" = commit ]; then
   vendored="$root/.claude/hooks/paperplane-guard.sh"
   omp_hook="$root/.omp/hooks/pre/paperplane-guard.ts"
   # shellcheck disable=SC2016  # Claude Code expands $CLAUDE_PROJECT_DIR when it runs the hook
-  command='f="$CLAUDE_PROJECT_DIR/.claude/hooks/paperplane-guard.sh"; [ -f "$f" ] || { echo "'"$missing_msg"': $f" >&2; exit 2; }; exec bash "$f"'
+  command='f="$CLAUDE_PROJECT_DIR/.claude/hooks/paperplane-guard.sh"; [ -f "$f" ] || { echo "'"$missing_msg"': $f" >&2; exit 2; }; '"$run"
 fi
 
 if [ -s "$file" ]; then
@@ -137,7 +140,8 @@ else
 fi
 if [ "$scope" = commit ]; then
   if [ "$uninstall" -eq 1 ]; then
-    echo "commit the removal: git add -A .claude .omp"
+    tracked=$(cd "$root" && git ls-files -- .claude/settings.json .claude/hooks/paperplane-guard.sh .omp/hooks/pre/paperplane-guard.ts | tr '\n' ' ')
+    if [ -n "$tracked" ]; then echo "commit the removal: git add -u -- ${tracked% }"; fi
   else
     echo "commit all three files: git add .claude/settings.json .claude/hooks/paperplane-guard.sh .omp/hooks/pre/paperplane-guard.ts"
   fi

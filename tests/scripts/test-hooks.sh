@@ -76,6 +76,8 @@ expect "git hook: tag that only starts like uat- allowed" 0 git push -q origin u
 
 echo X=1 > .env.local; git add -f .env.local; git commit -qm env
 expect "git hook: runs pre-push.sh on the current branch" 1 git push -q origin feature/x
+evil="$work/evil-skill"; mkdir -p "$evil/scripts"; printf '#!/bin/sh\nexit 0\n' > "$evil/scripts/pre-push.sh"
+expect "git hook: PAPERPLANE_SKILL_DIR from the environment is ignored" 1 env PAPERPLANE_SKILL_DIR="$evil" bash -c "printf 'refs/heads/feature/x %s refs/heads/feature/x 0000000000000000000000000000000000000000\n' \"\$(git rev-parse HEAD)\" | bash '$H/git-pre-push' origin url"
 git reset -q --hard HEAD~1
 
 git switch -qc fix/other; echo e > e; git add e; git commit -qm "fix(o): e"; git switch -q feature/x
@@ -121,6 +123,13 @@ git config core.hooksPath .husky/_
 expect "git hook: husky core.hooksPath refused" 1 bash "$H/install-git-hook.sh"
 check "git hook: husky refusal says to call it from .husky/pre-push" grep -q '\.husky/pre-push' /tmp/pp-test-out.$$
 check "git hook: husky hooks dir left alone" test ! -e .husky/_/pre-push
+git config core.hooksPath "$work/shared-hooks"
+expect "git hook: core.hooksPath outside the repo refused" 1 bash "$H/install-git-hook.sh"
+check "git hook: refusal names --global-hooks-path" grep -q -- '--global-hooks-path' /tmp/pp-test-out.$$
+check "git hook: nothing written to the shared folder" test ! -e "$work/shared-hooks/pre-push"
+expect "git hook: --global-hooks-path installs into the shared folder" 0 bash "$H/install-git-hook.sh" --global-hooks-path
+check "git hook: written to the shared folder" grep -qx '# paperplane-pre-push' "$work/shared-hooks/pre-push"
+rm -rf "$work/shared-hooks"
 git config --unset core.hooksPath
 expect "git hook: install outside a repo" 2 in_dir "$work" bash "$H/install-git-hook.sh"
 
@@ -368,9 +377,17 @@ expect "guard: cwd develop, relative git -C" 0 guard "git -C ../wt-feat push ori
 expect "guard: cwd develop, cd feature worktree && push" 0 guard "cd $feat_wt && git push" "$dev_wt"
 expect "guard: cwd feature, cd develop checkout && push" 2 guard "cd $dev_wt && git push" "$feat_wt"
 expect "guard: pushd tracked" 2 guard "pushd $dev_wt && git push" "$feat_wt"
-expect "guard: unresolvable dir falls back to cwd (develop)" 2 guard "cd /nonexistent/zz && git push" "$dev_wt"
-expect "guard: unresolvable dir falls back to cwd (feature)" 0 guard "cd /nonexistent/zz && git push" "$feat_wt"
-expect "guard: \$VAR dir falls back to cwd (develop)" 2 guard 'git -C $X push' "$dev_wt"
+expect "guard: a dir that does not exist yet fails closed (develop)" 2 guard "cd /nonexistent/zz && git push" "$dev_wt"
+expect "guard: a dir that does not exist yet fails closed (feature)" 2 guard "cd /nonexistent/zz && git push" "$feat_wt"
+expect "guard: a dir that does not exist yet allows a named branch" 0 guard "cd /nonexistent/zz && git push origin feature/q" "$dev_wt"
+expect "guard: \$VAR dir fails closed (develop)" 2 guard 'git -C $X push' "$dev_wt"
+expect "guard: \$VAR dir fails closed (feature)" 2 guard 'git -C $X push' "$feat_wt"
+expect "guard: git -C ~ is judged in HOME (develop)" 2 env HOME="$dev_wt" bash -c "$(declare -f hook_json); hook_json 'git -C ~ push' '$feat_wt' | bash '$H/claude-guard.sh'"
+expect "guard: cd ~ is judged in HOME (develop)" 2 env HOME="$dev_wt" bash -c "$(declare -f hook_json); hook_json 'cd ~ && git push' '$feat_wt' | bash '$H/claude-guard.sh'"
+expect "guard: bare cd is judged in HOME (develop)" 2 env HOME="$dev_wt" bash -c "$(declare -f hook_json); hook_json 'cd && git push origin HEAD' '$feat_wt' | bash '$H/claude-guard.sh'"
+expect "guard: cd ~ is judged in HOME (feature)" 0 env HOME="$feat_wt" bash -c "$(declare -f hook_json); hook_json 'cd ~ && git push' '$dev_wt' | bash '$H/claude-guard.sh'"
+expect "guard: worktree add then cd and bare push fails closed" 2 guard 'git worktree add ../w-new main && cd ../w-new && git push' "$feat_wt"
+expect "guard: worktree add then cd and named push allowed" 0 guard 'git worktree add ../w-new feature/q && cd ../w-new && git push origin feature/q' "$feat_wt"
 expect "guard: cd into pnpm repo then npm install" 2 guard "cd $work/pnpm-repo && npm install" "$work/npm-repo"
 expect "guard: cd out of pnpm repo then npm install" 0 guard "cd $work/npm-repo && npm install" "$work/pnpm-repo"
 
@@ -397,9 +414,10 @@ for c in "${pnpm_hard_allowed[@]}"; do expect "guard allows in pnpm repo: $c" 0 
 lower() { printf '{"tool_name":"%s","tool_input":{"command":"git push --force"}}' "$1" | bash "$H/claude-guard.sh"; }
 expect "guard: tool name bash (lowercase) is checked" 2 lower bash
 expect "guard: tool name BASH is checked" 2 lower BASH
-expect "guard: non-string command is unreadable, not allowed" 1 bash -c "printf '%s' '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":5}}' | bash '$H/claude-guard.sh'"
-expect "guard: missing command is unreadable, not allowed" 1 bash -c "printf '%s' '{\"tool_name\":\"Bash\",\"tool_input\":{}}' | bash '$H/claude-guard.sh'"
-expect "guard without jq: non-string command is unreadable" 1 bash -c "printf '%s' '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":[\"git\"]}}' | PATH='$nojq' '$BASH' '$H/claude-guard.sh'"
+expect "guard: non-string command fails closed" 2 bash -c "printf '%s' '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":5}}' | bash '$H/claude-guard.sh'"
+expect "guard: missing command fails closed" 2 bash -c "printf '%s' '{\"tool_name\":\"Bash\",\"tool_input\":{}}' | bash '$H/claude-guard.sh'"
+expect "guard without jq: non-string command fails closed" 2 bash -c "printf '%s' '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":[\"git\"]}}' | PATH='$nojq' '$BASH' '$H/claude-guard.sh'"
+expect "guard: command given as a JSON array fails closed" 2 bash -c "printf '%s' '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":[\"git\",\"push\"]}}' | bash '$H/claude-guard.sh'"
 expect "guard without jq: quote-split name blocked" 2 guard_nojq "g''it push origin main" "$work/npm-repo"
 
 expect "guard ignores other tools" 0 bash -c "printf '%s' '{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"git push --force\"}}' | bash '$H/claude-guard.sh'"
@@ -1033,6 +1051,12 @@ expect "installer: --user command fails closed when the guard is missing" 2 bash
 check "installer: --user missing-guard message says what is wrong" grep -q 'paperplane guard' /tmp/pp-test-out.$$
 expect "installer: --user command fails closed under bash too" 2 bash -c "echo '{}' | bash -c '$(fc_cmd "$fc_home/.claude/settings.json" 'Edit|Write|MultiEdit|NotebookEdit' | sed "s/'/'\\\\''/g")'"
 mv "$hk/claude-guard.sh.moved" "$hk/claude-guard.sh"
+mv "$hk/claude-guard.sh" "$hk/claude-guard.sh.real"; printf 'exit 1\n' > "$hk/claude-guard.sh"
+expect "installer: --user command blocks when the guard crashes (exit 1)" 2 bash -c "echo '{}' | sh -c '$(fc_cmd "$fc_home/.claude/settings.json" Bash | sed "s/'/'\\\\''/g")'"
+check "installer: crash message names the exit code" grep -q 'paperplane guard failed (exit 1)' /tmp/pp-test-out.$$
+printf 'exit 0\n' > "$hk/claude-guard.sh"
+expect "installer: --user command still allows when the guard exits 0" 0 bash -c "echo '{}' | sh -c '$(fc_cmd "$fc_home/.claude/settings.json" Bash | sed "s/'/'\\\\''/g")'"
+mv "$hk/claude-guard.sh.real" "$hk/claude-guard.sh"
 
 fc_proj="$work/fc-proj"; git init -q "$fc_proj"
 expect "installer (copy): --project" 0 in_dir "$fc_proj" bash "$hk/install-claude-hook.sh" --project
@@ -1048,6 +1072,8 @@ expect "installer: --commit command blocks while the guard exists" 2 env CLAUDE_
 rm "$fc_com/.claude/hooks/paperplane-guard.sh"
 expect "installer: --commit command fails closed when the vendored guard is missing" 2 env CLAUDE_PROJECT_DIR="$fc_com" bash -c "echo '{}' | sh -c '$(fc_cmd "$fc_com/.claude/settings.json" Bash | sed "s/'/'\\\\''/g")'"
 expect "installer: --commit command fails closed when CLAUDE_PROJECT_DIR is unset" 2 env -u CLAUDE_PROJECT_DIR bash -c "echo '{}' | sh -c '$(fc_cmd "$fc_com/.claude/settings.json" Bash | sed "s/'/'\\\\''/g")'"
+mkdir -p "$fc_com/.claude/hooks"; printf 'exit 3\n' > "$fc_com/.claude/hooks/paperplane-guard.sh"
+expect "installer: --commit command blocks when the vendored guard exits 3" 2 env CLAUDE_PROJECT_DIR="$fc_com" bash -c "echo '{}' | sh -c '$(fc_cmd "$fc_com/.claude/settings.json" Bash | sed "s/'/'\\\\''/g")'"
 rm -rf "$fc_com/.claude/hooks"
 
 # --- installer: the second matcher, idempotence, merging with other hooks, uninstall
@@ -1076,6 +1102,14 @@ expect "installer: --commit --uninstall" 0 in_dir "$imc" bash "$H/install-claude
 check "installer: --commit --uninstall does not say 'commit all three files'" bash -c "! grep -q 'commit all three files' /tmp/pp-test-out.$$"
 check "installer: --commit --uninstall says it removed the guard" grep -q 'removed' /tmp/pp-test-out.$$
 check "installer: --commit --uninstall left no guard entry" test "$(grep -c 'paperplane-guard' "$imc/.claude/settings.json")" = 0
+imu="$work/im-uninstall-committed"; git init -q "$imu"
+in_dir "$imu" bash "$H/install-claude-hook.sh" --commit >/dev/null
+git -C "$imu" add .claude/settings.json .claude/hooks/paperplane-guard.sh .omp/hooks/pre/paperplane-guard.ts
+git -C "$imu" -c user.email=a@b.c -c user.name=T commit -qm guard
+expect "installer: --commit --uninstall of committed files" 0 in_dir "$imu" bash "$H/install-claude-hook.sh" --commit --uninstall
+check "installer: --commit --uninstall names the exact files to commit" grep -qx 'commit the removal: git add -u -- .claude/hooks/paperplane-guard.sh .claude/settings.json .omp/hooks/pre/paperplane-guard.ts' /tmp/pp-test-out.$$
+check "installer: --commit --uninstall never suggests git add -A" bash -c "! grep -q 'add -A' /tmp/pp-test-out.$$"
+expect "guard allows the suggested commit command" 0 guard 'git add -u -- .claude/hooks/paperplane-guard.sh .claude/settings.json .omp/hooks/pre/paperplane-guard.ts' "$imu"
 
 # --- the guard itself: input it cannot read must not turn into a pass
 nojp="$work/nojp-bin"; mkdir "$nojp"; ln -s "$(command -v cat)" "$nojp/cat"
@@ -1115,7 +1149,115 @@ if command -v bun >/dev/null 2>&1; then
   check "omp adapter: edit of a protected file is blocked" bash -c "$(declare -f omp_call2); omp_call2 '$og/paperplane-guard.ts' edit '{\"path\":\".claude/settings.json\"}' '$work' | grep -q '^block: '"
   check "omp adapter: write of a protected file is blocked" bash -c "$(declare -f omp_call2); omp_call2 '$og/paperplane-guard.ts' write '{\"file_path\":\"$work/.husky/pre-push\"}' '$work' | grep -q '^block: '"
   check "omp adapter: edit of another file is allowed" bash -c "$(declare -f omp_call2); omp_call2 '$og/paperplane-guard.ts' edit '{\"path\":\"src/a.ts\"}' '$work' | grep -qx allow"
+  ofake="$work/omp-fake-cwd"; git init -q "$ofake"; mkdir -p "$ofake/.claude/hooks"; : > "$ofake/.claude/hooks/paperplane-guard.sh"
+  check "omp adapter: an empty guard in the call's cwd does not replace its own" bash -c "$(declare -f omp_call2); omp_call2 '$oa/paperplane-guard.ts' bash '{\"command\":\"git push --force\"}' '$ofake' | grep -q '^block: '"
+  oc="$work/omp-commit"; mkdir -p "$oc/.omp/hooks/pre" "$oc/.claude/hooks"; cp "$H/omp-guard.ts" "$oc/.omp/hooks/pre/paperplane-guard.ts"; cp "$H/claude-guard.sh" "$oc/.claude/hooks/paperplane-guard.sh"
+  check "omp adapter (--commit layout): finds the repo's guard from its own folder" bash -c "$(declare -f omp_call2); omp_call2 '$oc/.omp/hooks/pre/paperplane-guard.ts' bash '{\"command\":\"git push --force\"}' '$ofake' | grep -q '^block: .*force push'"
+  check "omp adapter (--commit layout): allows a harmless command" bash -c "$(declare -f omp_call2); omp_call2 '$oc/.omp/hooks/pre/paperplane-guard.ts' bash '{\"command\":\"ls\"}' '$work' | grep -qx allow"
 fi
+
+# ================================================================ round 3: audit findings
+# --- git aliases: "!" shell aliases are refused; other aliases are judged by what they expand to
+ar="$work/alias-repo"; git init -q "$ar"; git -C "$ar" symbolic-ref HEAD refs/heads/feature/z
+git -C "$ar" config alias.pp 'push origin main'; git -C "$ar" config alias.co checkout; git -C "$ar" config alias.sh '!git'; git -C "$ar" config alias.pf 'push --force'
+alias_blocked=(
+  "git -c alias.g='!git' g push --no-verify origin HEAD:main"
+  "git config alias.g '!git'; git g push --no-verify origin HEAD:main"
+  "git config alias.g '!git'"
+  "git config --global alias.x '!sh -c \"echo hi\"'"
+  "git -c alias.g=' !git' g status"
+  'git pp'
+  'git pf origin feature/z'
+  'git sh push origin HEAD:main'
+  'git -c alias.s=status -c alias.x=pp x'
+  'git -C . pp'
+)
+for c in "${alias_blocked[@]}"; do expect "guard blocks (git alias): $c" 2 guard "$c" "$ar"; done
+for c in 'git co feature/a' 'git -c alias.st=status st' 'git -c alias.lg="log --oneline" lg -3' 'git status' 'git frobnicate'; do expect "guard allows (git alias): $c" 0 guard "$c" "$ar"; done
+
+# --- the guard's own files wherever it is installed: the skill's hooks/ and scripts/, omp's agent dir
+sk="$work/skill-copy"; mkdir -p "$sk"; cp -R "$H" "$sk/hooks"; mkdir -p "$sk/scripts"; : > "$sk/scripts/pre-push.sh"; : > "$sk/README.md"
+skguard() { hook_json "$1" "$2" | bash "$sk/hooks/claude-guard.sh"; }
+sktool() { tool_json "$1" file_path "$2" "$3" | bash "$sk/hooks/claude-guard.sh"; }
+for f in "$sk/hooks/claude-guard.sh" "$sk/hooks/install-claude-hook.sh" "$sk/scripts/pre-push.sh" "$sk/hooks/../scripts/pre-push.sh"; do
+  expect "guard (skill install) blocks Write of $f" 2 sktool Write "$f" "$pr"
+done
+expect "guard (skill install) allows Write of the skill's README" 0 sktool Write "$sk/README.md" "$pr"
+for c in "sed -i '' s/a/b/ $sk/hooks/claude-guard.sh" "rm $sk/scripts/pre-push.sh" "rm -rf $sk/hooks" "rm -rf $sk" "cp /tmp/x $sk/hooks/claude-guard.sh" 'rm ../skill-copy/hooks/claude-guard.sh'; do
+  expect "guard (skill install) blocks: $c" 2 skguard "$c" "$work/pr-dummy"
+done
+expect "guard (skill install) allows: rm of another file" 0 skguard "rm $sk/README.md" "$pr"
+ompd="$work/omp-agent"; mkdir -p "$ompd/hooks/pre"
+for f in "$ompd/hooks/pre/paperplane-guard.ts" "$ompd/hooks/pre/paperplane-guard.sh"; do
+  expect "guard blocks Write of the omp agent hook $f" 2 env PI_CODING_AGENT_DIR="$ompd" bash -c "$(declare -f tool_json); tool_json Write file_path '$f' '$pr' | bash '$H/claude-guard.sh'"
+done
+expect "guard blocks rm of the omp agent hooks dir" 2 env PI_CODING_AGENT_DIR="$ompd" bash -c "$(declare -f hook_json); hook_json 'rm -rf $ompd/hooks' '$pr' | bash '$H/claude-guard.sh'"
+fh="$work/fake-home"; mkdir -p "$fh"
+expect "guard blocks rm ~/.omp/agent/hooks/pre/paperplane-guard.ts" 2 env -u PI_CODING_AGENT_DIR HOME="$fh" bash -c "$(declare -f hook_json); hook_json 'rm ~/.omp/agent/hooks/pre/paperplane-guard.ts' '$pr' | bash '$H/claude-guard.sh'"
+expect "guard blocks Edit of ~/.omp/agent/hooks/pre/paperplane-guard.sh" 2 env -u PI_CODING_AGENT_DIR HOME="$fh" bash -c "$(declare -f tool_json); tool_json Edit file_path '$fh/.omp/agent/hooks/pre/paperplane-guard.sh' '$pr' | bash '$H/claude-guard.sh'"
+og2="$work/omp-installed/hooks/pre"; mkdir -p "$og2"; cp "$H/claude-guard.sh" "$og2/paperplane-guard.sh"
+expect "guard (omp install) blocks Write of the adapter beside it" 2 bash -c "$(declare -f tool_json); tool_json Write file_path '$og2/paperplane-guard.ts' '$pr' | bash '$og2/paperplane-guard.sh'"
+
+# --- gh api: a query string or trailing slash does not hide the endpoint
+for c in "gh api -X PUT 'repos/o/r/pulls/1/merge?merge_method=squash'" 'gh api -X PUT repos/o/r/pulls/1/merge/' "gh api -X POST 'repos/o/r/merges?x=1' -f base=develop" \
+         "gh api -X PATCH 'repos/o/r/git/refs/heads/main?x=1' -f sha=abc" "gh api -X DELETE 'repos/o/r/git/refs/heads/develop/'" "gh api -X PATCH 'repos/o/r?x=1' -f private=false"; do
+  expect "guard blocks: $c" 2 guard "$c" "$R"
+done
+for c in "gh api 'repos/o/r/pulls/1/merge?x=1'" "gh api -X PATCH 'repos/o/r/git/refs/heads/feature/x?x=1' -f sha=abc" "gh api 'repos/o/r/pulls?state=open'"; do expect "guard allows: $c" 0 guard "$c" "$R"; done
+
+# --- an approve event or graphql query the guard cannot read
+for c in 'gh api repos/o/r/pulls/5/reviews -F event=@ev.txt' 'gh api repos/o/r/pulls/5/reviews -f event="$(cat ev)"' 'gh api repos/o/r/pulls/5/reviews -f event="$E"' \
+         'gh api repos/o/r/pulls/5/reviews --field=event=@ev' 'gh api graphql -f query="$(cat q)"' 'gh api graphql -f query="$Q"' 'gh api graphql -F query=`cat q`'; do
+  expect "guard blocks (hidden payload): $c" 2 guard "$c" "$R"
+done
+for c in 'gh api repos/o/r/pulls/5/reviews -f event=COMMENT -f body="$MSG"' 'gh api repos/o/r/pulls/5/comments -f body="$(cat note)"' "gh api graphql -f query='query{viewer{login}}' -f owner=\"\$O\""; do
+  expect "guard allows: $c" 0 guard "$c" "$R"
+done
+
+# --- shell forms that hide the command word
+shell_blocked=(
+  "bash -c -- 'gh pr merge 1'" "bash -c -x 'gh pr merge 1'" "sh -c -e 'gh pr merge 1'" "bash -o pipefail -c 'git push origin main'" "zsh -fc 'git push -f'"
+  "eval -- 'gh pr merge 1'" "trap 'gh pr merge 1' EXIT" "trap -- 'git push origin main' INT" 'trap "$(cat x)" EXIT'
+  'gh $(echo pr) merge 1' 'gh "$X" merge 1' 'gh pr "$X" 1'
+  'unbuffer git push origin main' 'chronic gh pr merge 1' '/usr/bin/chronic git push -f' 'git-push origin main' '/usr/libexec/git-core/git-push --force' 'sudo git-push origin main'
+  'noglob git push origin main' '=git push origin main' 'nocorrect gh pr merge 1'
+)
+for c in "${shell_blocked[@]}"; do expect "guard blocks (hidden command word): $c" 2 guard "$c" "$R"; done
+for c in "bash -c -- 'echo hi'" "sh -c -e 'git status'" "trap 'rm -f tmp.txt' EXIT" 'trap - EXIT' 'gh pr view "$N"' 'gh api "$URL"' 'unbuffer git push origin feature/x' 'git-status' 'noglob git status' '=git log -1'; do
+  expect "guard allows: $c" 0 guard "$c" "$R"
+done
+
+# --- switching the hooks off through git config in the environment or the config file
+hookoff_blocked=(
+  'export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null; git push origin feature/x'
+  "export GIT_CONFIG_PARAMETERS=\"'core.hooksPath=/dev/null'\""
+  'GIT_CONFIG_COUNT=1; export GIT_CONFIG_COUNT'
+  'declare -x GIT_CONFIG_GLOBAL=/tmp/evil.cfg'
+  'GIT_CONFIG=/tmp/x git push origin feature/x'
+  'printf "[core]\nhooksPath=/dev/null\n" >> .git/config'
+  'tee -a .git/config < x'
+  'git config paperplane.blockForcePush false'
+  'git config --unset paperplane.blockForcePush'
+  'git config unset paperplane.blockForcePush'
+  'git config --remove-section paperplane'
+  'git -c paperplane.blockForcePush=false push origin feature/x'
+)
+for c in "${hookoff_blocked[@]}"; do expect "guard blocks (hooks switched off): $c" 2 guard "$c" "$pr"; done
+for c in 'git config --get paperplane.blockForcePush' 'export GIT_TRACE=1; git push origin feature/x' 'cat .git/config' 'git config --list'; do expect "guard allows: $c" 0 guard "$c" "$pr"; done
+for t in Edit Write; do
+  for f in .git/config "$pr/.git/config" .git/config.worktree; do expect "guard blocks $t on $f" 2 tguard "$t" file_path "$f" "$pr"; done
+done
+
+# --- ${VAR-default} in a push target: the default may be a protected branch
+for c in 'git push origin ${X-main}' 'git push origin ${X:-develop}' 'git push origin HEAD:${X:-main}' 'git push origin "${X:=uat}"' 'git push origin ${X:-feature/y}'; do
+  expect "guard blocks: $c" 2 guard "$c" "$feat_wt"
+done
+for c in 'git push origin ${B}' 'git push origin "$B"'; do expect "guard allows (feature branch): $c" 0 guard "$c" "$feat_wt"; done
+
+# --- the pre-push hook's skill dir comes from the installer, never the environment
+for c in 'export PAPERPLANE_SKILL_DIR=/tmp/evil' 'PAPERPLANE_SKILL_DIR=/tmp/evil git push origin feature/x' 'env PAPERPLANE_SKILL_DIR=/tmp/evil git push origin feature/x' 'declare -x PAPERPLANE_SKILL_DIR'; do
+  expect "guard blocks: $c" 2 guard "$c" "$R"
+done
 
 # ================================================================ round 2, P4: a big command must not time the hook out (60s, fails open)
 # Generous bounds so a slow CI box does not flake; the point is that a regression to the old 14-17 s shows up.
