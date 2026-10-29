@@ -61,7 +61,7 @@ Deadlines and explicit requests don't change these. No exception is granted in t
    - Checklist: all 7 boxes, ticked only where true.
    - The diff has no dead or commented-out code, "for later" helpers, leftover TODOs or debug logs (team convention, not in the guide). Remove them first.
 
-   Check it with `bash <skill>/scripts/check-pr-body.sh "${TMPDIR:-/tmp}/pr-body.md"` (same rules as CI, which skips the body check while the PR is a draft; app repos detected from `standard.yml`), then `gh pr ready <N>`, report the URL, stop. The reviewer is never the person who prompted you.
+   Check it with `bash <skill>/scripts/check-pr-body.sh "${TMPDIR:-/tmp}/pr-body.md"` (same rules as CI, which skips the body check while the PR is a draft; app repos detected from `standard.yml`), then `gh pr ready <N>`, report the URL, stop. The reviewer is never the person who prompted you. A `/ready` PR comment counts as `gh pr ready` (same rule: only after the human's go); only the human posts it, never you.
 8. **Review comments**: every comment gets an answer **the same day**: a fix, or a reply in the thread saying why not. If the user defers a comment, draft that reply for them to post today ("Not in this PR: <reason>; follow-up: <link or plan>"). No comment stays silent. You may reply "Fixed in <sha>" on threads you fixed. Never resolve threads. Draft any rejection for the human to post.
 9. **Old drafts**: a draft open more than three working days (team convention, not in the guide, which says "days, not weeks") gets split, or the user asks for help. Tell them; don't keep adding to it.
 

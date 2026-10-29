@@ -128,6 +128,11 @@ else
   elif [ -n "$thin" ]; then report FAIL codeowners "fewer than two @owners for:$thin"
   else report PASS codeowners "$cpath: $rules rule(s), each with two or more @owners"; fi
 fi
+if cerr=$(api "repos/$repo/codeowners/errors?ref=$ref" --jq '(.errors | length), (.errors[0] // {} | "\(.path // "?"):\(.line // "?") \(.message // .kind // "")" | gsub("\\s+"; " "))'); then
+  ncerr=$(printf '%s\n' "$cerr" | sed -n 1p)
+  if [ "$ncerr" = 0 ]; then report PASS codeowners-errors "GitHub resolves every owner $on"
+  else report FAIL codeowners-errors "$ncerr error(s), first: $(printf '%s\n' "$cerr" | sed -n 2p | cut -c1-160); code-owner review is required, so an unresolved owner blocks or skips review requests"; fi
+else report WARN codeowners-errors "cannot read codeowners/errors: $(lasterr)"; fi
 
 # Standard CI workflow.
 want=paperplanehq/paperplane-engineering/.github/workflows/standard-checks.yml@develop
@@ -175,6 +180,15 @@ else
   fi
 fi
 
+# A merge queue waits for `standard / checks` on a merge_group event; without that trigger it never runs.
+if rtypes=$(api "repos/$repo/rules/branches/develop" --jq '.[].type'); then
+  if has "$rtypes" merge_queue; then
+    if [ -z "${flags:-}" ]; then report FAIL merge-queue "develop has a merge queue, but standard.yml cannot be read"
+    elif printf '%s\n' "$wf" | grep -qE '(^|[^A-Za-z_])merge_group([^A-Za-z_]|$)'; then report PASS merge-queue "develop queue, and standard.yml runs on merge_group"
+    else report FAIL merge-queue "develop has a merge queue, but standard.yml has no merge_group trigger; the queue waits forever for standard / checks"; fi
+  fi
+else report WARN merge-queue "cannot read rules for develop: $(lasterr)"; fi
+
 # Committed Claude Code guard (install-claude-hook.sh --commit) and AGENTS.md pointing at the skills.
 fix="run: bash <skills>/paperplane-shipping-changes/hooks/install-claude-hook.sh --commit"
 local_guard="$(cd "$(dirname "$0")" && pwd)/../../paperplane-shipping-changes/hooks/claude-guard.sh"
@@ -189,6 +203,20 @@ else
   if [ ! -f "$local_guard" ]; then report WARN claude-guard-current "cannot compare: no $local_guard"
   elif [ "$vg" = "$(cat "$local_guard")" ]; then report PASS claude-guard-current "same as the installed skills"
   else report WARN claude-guard-current "differs from the installed skills' guard; $fix"; fi
+fi
+
+assets="$(cd "$(dirname "$0")" && pwd)/../assets/.github"
+wfs=$(api "repos/$repo/contents/.github/workflows?ref=$ref" --jq '.[].name') || wfs=""
+if [ ! -d "$assets" ] && { has "$wfs" paperplane-ready.yml || has "$wfs" paperplane-merge-back.yml; }; then
+  report WARN pr-automation-current "cannot compare: no $assets"
+elif has "$wfs" paperplane-ready.yml || has "$wfs" paperplane-merge-back.yml; then
+  stale=""
+  while IFS= read -r f; do
+    rel=${f#"$assets"/}
+    if ! got=$(raw ".github/$rel") || [ "$got" != "$(cat "$f")" ]; then stale="$stale .github/$rel"; fi
+  done < <(find "$assets" -type f | sort)
+  if [ -n "$stale" ]; then report WARN pr-automation-current "missing or differs from the skill's assets:$stale; rerun cp -R <repo-setup>/assets/.github/. .github/"
+  else report PASS pr-automation-current "same as the skill's assets"; fi
 fi
 if raw .omp/hooks/pre/paperplane-guard.ts >/dev/null; then report PASS omp-guard "committed in .omp/hooks/pre/paperplane-guard.ts"
 else report WARN omp-guard "no .omp/hooks/pre/paperplane-guard.ts $on (omp ignores Claude Code hooks); $fix"; fi

@@ -2,6 +2,16 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.19
+
+### Added: PR automation for product repos (optional, the CTO decides)
+A person still makes every review decision; the automation does the clicks after it. Agents still never approve or merge.
+- **`/ready`**: the PR author comments `/ready` on their draft after reviewing the diff. `paperplane-ready.yml` marks it ready only if the commenter is the author and an org owner, member or collaborator (bots refused), the body passes `check-pr-body.sh`, and the latest `standard / checks` on the head commit succeeded. Every refusal posts one comment with the reason. shipping-changes: a `/ready` comment counts as `gh pr ready`; agents never post it.
+- **Merge-back**: when the CTO pushes a `prod-*` tag and `main` has hotfix commits missing from `uat` or `develop`, `paperplane-merge-back.yml` opens the two draft merge-back PRs with a body that passes the CI check. A normal release or a re-run opens nothing; a conflict adds a comment with the `chore/merge-back-<tag>` steps. releasing: check for them before opening by hand.
+- **repo-setup**: a "PR automation" section (install with `cp -R assets/.github/. .github/`, the Actions setting merge-back needs, and the merge queue order: `merge_group:` in `templates/standard.yml` first, then a SQUASH queue on `develop` only). `docs/open-questions-for-cto.md` has both, safe default off.
+- **audit.sh**: `codeowners-errors` FAILs when GitHub can't resolve a CODEOWNERS owner; `merge-queue` FAILs when `develop` has a queue but `standard.yml` has no `merge_group` trigger; `pr-automation-current` WARNs when installed copies differ from the skill's.
+- Verified live in a throwaway private repo: the check-run name is `standard / checks`; `gh pr ready` with `GITHUB_TOKEN` fails without `contents: write` ("Resource not accessible by integration"), so the workflow requests it; a bot marking ready starts no CI; bot-opened PRs get their CI held as "action_required" until a person approves it. New tests: `test-pr-ready.sh` (71), `test-merge-back.sh` (43), 19 more in `test-audit.sh`.
+
 ## v2026.10.15.18
 
 ### Added: human labels for the current judge

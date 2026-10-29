@@ -1,0 +1,41 @@
+# Opens the two hotfix merge-back drafts (main -> uat, main -> develop) when the CTO pushes a prod-* tag.
+# Needs Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests" (the CTO turns it on).
+# PRs opened with GITHUB_TOKEN get their `standard / checks` run held as "action_required" (seen live): a person
+# clicks "Approve and run" on the PR, or marks it ready, before CI runs.
+# Retry: Actions > paperplane-merge-back > Run workflow, with the tag.
+name: paperplane-merge-back
+
+on:
+  push:
+    tags: ['prod-*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'prod-* tag to merge back'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: paperplane-merge-back-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  merge-back:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Open merge-back drafts
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/paperplane-merge-back.sh
