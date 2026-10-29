@@ -1,0 +1,38 @@
+{
+  "argv": [
+    "--scenarios",
+    "s1,s2,s7,s8,s9,s11,s20,s6,s25",
+    "--reps",
+    "2",
+    "--model",
+    "sonnet",
+    "--judge-model",
+    "opus",
+    "--save-results"
+  ],
+  "skill_ref": null,
+  "no_skills": false,
+  "model": "sonnet",
+  "judge_model": "opus",
+  "checks": true,
+  "baseline_context": null,
+  "fail_under": 1.0,
+  "scenarios": [
+    "s1",
+    "s2",
+    "s7",
+    "s8",
+    "s9",
+    "s11",
+    "s20",
+    "s6",
+    "s25"
+  ],
+  "reps": 2,
+  "trigger": false,
+  "totals": {
+    "valid": 18,
+    "passed": 16,
+    "invalid": 0
+  }
+}

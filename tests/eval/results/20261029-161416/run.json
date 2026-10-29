@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "--trigger",
+    "--reps",
+    "2",
+    "--model",
+    "sonnet",
+    "--save-results"
+  ],
+  "skill_ref": null,
+  "no_skills": false,
+  "model": "sonnet",
+  "judge_model": "sonnet",
+  "checks": true,
+  "baseline_context": null,
+  "fail_under": 1.0,
+  "scenarios": [],
+  "reps": 2,
+  "trigger": true,
+  "totals": {
+    "valid": 50,
+    "passed": 50,
+    "invalid": 0
+  }
+}

@@ -2,6 +2,20 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.17
+
+The first sealed run of S50 to S56 (sonnet, judge opus): 14/21 overall, recorded as it came out. Of the seven failures, four were real and three were grader or harness errors. S50 to S57 are development scenarios from now on; a new generalisation claim needs a new sealed set.
+
+### Fixed: skills
+- **shipping-changes**: the branch prefix is `feature/`, never `feat/` (`feat` is the commit type). Two of three sealed S50 runs named the branch `feat/…`.
+- **releasing**: the hotfix step stages files by name, never `git add -A` or `git commit -a`.
+- **secret-incidents**: asked to paste `.env` into a PR, write both in the PR: the names are in `.env.example` and the values come from the CTO.
+
+### Fixed: evals
+- `checks.py`: a numbered step's command is judged by the text before it, not by its reason ("`gh pr ready 503 --undo`: … not this commit" is run); a command followed by "would/could/might" is not run; a "once … :" line covers an inline command on the next line; the positive hotfix check counts planned commands; S8's `no_gh_pr_ready` ignores `--undo`; `no_add_all` on S50, S51 and S55. 8 new self-test samples.
+- `run.py`: the role-play tells the model to use the scenario's dates, not its own clock (one S53 answer flagged a rollback tag as "dated after today").
+- After the fixes: S50, S53, S55 15/15; S51, S52, S54, S56, S57 14/15 then S54 5/5; triggering 25/25.
+
 ## v2026.10.15.16
 
 Found by the first live eval of v2026.10.15.15 (sonnet). Results in `tests/RESULTS.md`, with saved runs under `tests/eval/results/`.
