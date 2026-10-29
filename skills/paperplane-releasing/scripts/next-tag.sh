@@ -2,8 +2,8 @@
 # Prints the next release tag name for a date in the current repo. Never creates or pushes tags.
 # Usage: bash scripts/next-tag.sh [--prefix prod|uat] [--date YYYY-MM-DD] [--previous [--before TAG]] [--no-fetch]
 #   default: --prefix prod, --date today (local time); runs `git fetch --tags` first unless --no-fetch
-#   --previous  print the newest existing <prefix>-* tag by tag date (what is deployed now); tags with the
-#               same tag date: the higher version suffix wins (prod-D.10 over prod-D.9 over prod-D)
+#   --previous  print the newest existing <prefix>-* tag by name (what is deployed now): later day first, then the
+#               higher version suffix (prod-D.10 over prod-D.9 over prod-D); works for lightweight and annotated tags
 #   --before TAG  with --previous: the newest tag older than TAG (the rollback target when TAG is bad)
 # Exit codes: 0 tag printed · 1 --previous found no tag · 2 usage error, unknown --before tag, not a git repo, or fetch failed
 set -uo pipefail
@@ -57,7 +57,7 @@ if $fetch && ! git fetch --tags --quiet; then
 fi
 
 if $previous; then
-  tags=$(git for-each-ref --sort=-version:refname --sort=-creatordate --format='%(refname:short)' "refs/tags/$prefix-*" \
+  tags=$(git for-each-ref --sort=-version:refname --format='%(refname:short)' "refs/tags/$prefix-*" \
     | grep -E "^$prefix-[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$")
   if [ -n "$before" ]; then
     printf '%s\n' "$tags" | grep -qxF -- "$before" || { echo "--before: no tag '$before' in this repo"; exit 2; }

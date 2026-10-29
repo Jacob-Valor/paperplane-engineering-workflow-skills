@@ -149,6 +149,13 @@ expect "--apply on a repo whose default branch is main" 0 bash "$RG" --apply pap
 check  "--apply: branch is built on develop" \
   "$(git -C "$work/remotes/paperplanehq/twobranch.git" ls-tree -r --name-only chore/agent-guard | grep -c '^ON_DEVELOP$')" 1
 
+# re-run after the branch was pushed: say the branch exists, not "write access?"
+: > "$FAKE_GH_CALLS"
+expect "--apply when chore/agent-guard is already on the remote exits 1" 1 bash "$RG" --apply paperplanehq/plain
+says   "existing branch: says so" 'branch chore/agent-guard already exists on paperplanehq/plain'
+lacks  "existing branch: no write-access guess" 'write access'
+check  "existing branch: no PR opened" "$(grep -c '^pr create' "$FAKE_GH_CALLS")" 0
+
 # (4) a repo that cannot be cloned: exit 1, the others still run
 : > "$FAKE_GH_CALLS"
 expect "unclonable repo exits 1" 1 bash "$RG" paperplanehq/missing paperplanehq/noagents
@@ -157,6 +164,7 @@ says   "unclonable: next repo still runs" '^== paperplanehq/noagents$'
 says   "unclonable: next repo still gets its diff" '3 files? changed'
 expect "unclonable repo last also exits 1" 1 bash "$RG" paperplanehq/noagents paperplanehq/missing
 says   "unclonable last: earlier repo was done" '3 files? changed'
+check  "temp clones are removed" "$(find "$work/tmp" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')" 0
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

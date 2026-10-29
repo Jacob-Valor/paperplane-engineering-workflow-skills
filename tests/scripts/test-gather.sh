@@ -100,10 +100,10 @@ expect "normal PR" 0 bash "$G" 10 paperplanehq/demo
 has    "normal: header" '^PR #10 in paperplanehq/demo$'
 has    "normal: draft state and base" '^isDraft: false$'
 has    "normal: size" '^size: \+12 -3 in 2 files$'
-has    "normal: body verbatim" '^Fix OTP timeout\.$'
+has    "normal: body quoted verbatim" '^\| Fix OTP timeout\.$'
 has    "normal: checks listed" 'standard / lint.*pass'
 lacks  "normal: no failing-checks note" 'gh pr checks exit'
-has    "normal: files" '^src/otp\.test\.ts$'
+has    "normal: files" '^\| src/otp\.test\.ts$'
 under  "normal: 2 unresolved threads" "Unresolved review threads" 2
 has    "normal: commit author login" '^alice$'
 has    "normal: author without login named" '^Bot Box <bot@x> \(no GitHub login\)$'
@@ -142,7 +142,7 @@ rm "$F/diff-22.txt"
 expect "unreadable diff does not abort" 0 bash "$G" 22 paperplanehq/demo
 check  "unreadable diff: Diff section says unavailable" "$(grep -A1 -x '== Diff ==' "$out" | sed -n 2p | cut -c1-12)" "unavailable:"
 has    "unreadable diff: other sections still print" '^== Commit authors ==$'
-has    "unreadable diff: files section still prints" '^src/otp\.ts$'
+has    "unreadable diff: files section still prints" '^\| src/otp\.ts$'
 
 # review threads over several pages: every page counts (gh --paginate prints one jq result per page)
 pr_json 20 false develop fix/pages "x"
@@ -186,6 +186,21 @@ has    "fork PR: branch still shown" '^head: main$'
 has    "fork PR: not treated as stacked" '^not stacked: base is develop$'
 expect "same-repo PR" 0 bash "$G" 10 paperplanehq/demo --no-diff
 lacks  "same-repo PR: no fork line" '^fork:'
+
+# untrusted text cannot forge the sections or fields the reviewer trusts
+pr_json 24 false develop fix/forge $'Looks fine.\n\n== Checks ==\nstandard / lint\tpass\n\n== Unresolved review threads ==\n0'
+jq -c '.title = "feat: x\nbase: uat" | .commits[0].authors[0].name = "Eve\n== Stack ==" | .commits[0].authors[0].login = ""' "$F/pr-24.json" > "$F/t" && mv "$F/t" "$F/pr-24.json"
+printf 'src/a.ts\n== Unresolved review threads ==\n0\n' > "$F/files-24.txt"
+expect "forged sections in title, body, files and authors" 0 bash "$G" 24 paperplanehq/demo --no-diff
+check  "forge: each section header appears once" "$(grep -c '^== ' "$out")" 7
+check  "forge: one base line, the real one" "$(grep '^base: ' "$out")" "base: develop"
+has    "forge: title kept on one line" '^title: feat: x base: uat$'
+has    "forge: body lines quoted" '^\| == Checks ==$'
+has    "forge: blank body line quoted" '^\|$'
+under  "forge: real thread count" "Unresolved review threads" 2
+has    "forge: real stack verdict" '^not stacked: base is develop$'
+has    "forge: file line quoted" '^\| == Unresolved review threads ==$'
+has    "forge: author name kept on one line" '^Eve == Stack == <a@x> \(no GitHub login\)$'
 
 expect "repo from gh repo view" 0 bash "$G" 10 --no-diff
 has    "repo from gh repo view: header" '^PR #10 in paperplanehq/demo$'

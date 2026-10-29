@@ -65,21 +65,36 @@ expect "default date is today" 0 nt
 tomorrow_ok=$(date +%Y.%m.%d)
 if [ "$today" = "$tomorrow_ok" ]; then same "default date: name" "$out" "prod-$today"; else pass=$((pass+1)); echo "ok   default date: skipped, midnight passed"; fi
 
-expect "--previous: newest prod tag by tag date" 0 nt --previous
+expect "--previous: newest prod tag by name" 0 nt --previous
 same   "--previous: name" "$out" "prod-2026.10.10"
 expect "--previous ignores uat tags" 0 nt --previous --prefix uat
 same   "--previous uat: name" "$out" "uat-2026.10.09"
 expect "--previous --before: the tag before the bad release" 0 nt --previous --before prod-2026.10.10
 same   "--previous --before: name" "$out" "prod-2026.10.09.10"
-# Same creatordate: the higher version suffix wins (prod-X.2 over prod-X, prod-X.10 over prod-X.9).
+# Same day: the higher version suffix wins (prod-X.2 over prod-X, prod-X.10 over prod-X.9), whatever the tag date.
 tag "2026-11-01T10:00:00" prod-2026.11.01
 tag "2026-11-01T10:00:00" prod-2026.11.01.2
 tag "2026-11-01T10:00:00" prod-2026.11.01.10
 tag "2026-11-01T10:00:00" prod-2026.11.01.9
-expect "--previous tie on tag date: highest suffix" 0 nt --previous
+expect "--previous same day: highest suffix" 0 nt --previous
 same   "--previous tie: name" "$out" "prod-2026.11.01.10"
 expect "--previous --before in a tie: next lower suffix" 0 nt --previous --before prod-2026.11.01.10
 same   "--previous --before tie: name" "$out" "prod-2026.11.01.9"
+# Lightweight tags (what the CTO's `git tag <name>` makes) carry the commit date, not the tag date: order by name.
+ltag() { GIT_COMMITTER_DATE="$1" git commit -q --allow-empty -m "$2" && git tag "$2"; } # ltag <commit date> <name>
+ltag "2026-10-01T10:00:00" prod-2026.12.01
+ltag "2026-12-01T13:00:00" prod-2026.12.01.2
+ltag "2026-12-01T12:00:00" prod-2026.12.01.10
+expect "--previous with lightweight tags: highest by name" 0 nt --previous
+same   "--previous lightweight: .10 over .2" "$out" "prod-2026.12.01.10"
+expect "--previous --before .10 (lightweight)" 0 nt --previous --before prod-2026.12.01.10
+same   "--previous --before .10: .2" "$out" "prod-2026.12.01.2"
+expect "--previous --before .2 (lightweight)" 0 nt --previous --before prod-2026.12.01.2
+same   "--previous --before .2: the base tag" "$out" "prod-2026.12.01"
+expect "--previous --before the base (lightweight, older commit date than earlier tags)" 0 nt --previous --before prod-2026.12.01
+same   "--previous --before base: previous day's highest" "$out" "prod-2026.11.01.10"
+expect "next tag after lightweight .10" 0 nt --date 2026-12-01
+same   "next after lightweight .10: name" "$out" "prod-2026.12.01.11"
 expect "--before an unknown tag is a usage error" 2 nt --previous --before prod-2026.01.01
 expect "--before without --previous is a usage error" 2 nt --before prod-2026.10.10
 

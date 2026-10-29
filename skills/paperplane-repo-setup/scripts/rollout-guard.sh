@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prepares the committed guard and the AGENTS.md "## AI agents" section for paperplanehq repos.
 # Usage: bash scripts/rollout-guard.sh [--apply] <owner/repo>...
-#   default  dry run: clones develop into a temp dir, makes the commit, prints the diff; pushes nothing
+#   default  dry run: clones develop into a temp dir, makes the commit, prints the diff stat; pushes nothing
 #   --apply  also pushes branch chore/agent-guard and opens a DRAFT PR into develop (needs write access)
 # A repo that already has the guard and the section is skipped. A human reviews and merges each PR.
 # Exit codes: 0 done · 1 a repo failed · 2 usage error
@@ -27,9 +27,12 @@ case "$section" in "## AI agents"*) ;; *) echo "cannot find the AI agents sectio
 
 branch=chore/agent-guard
 failed=0
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/rollout-guard.XXXXXX") || exit 1
+trap 'rm -rf "$tmp"' EXIT
+n=0
 for repo in "${repos[@]}"; do
   echo "== $repo"
-  dir=$(mktemp -d)
+  n=$((n+1)); dir="$tmp/$n"
   if ! git clone -q --branch develop --depth 1 "https://github.com/$repo.git" "$dir" 2>/dev/null \
      && ! gh repo clone "$repo" "$dir" -- -q --branch develop --depth 1 2>/dev/null; then
     echo "cannot clone $repo (develop)"; failed=1; continue
@@ -46,7 +49,10 @@ for repo in "${repos[@]}"; do
     if git diff --cached --quiet; then echo "already has the guard and section; skipped"; exit 0; fi
     git commit -qm "chore(agents): commit the paperplane guard for Claude Code and omp" || exit 1
     git show --stat --format='%s' HEAD | sed 's/^/  /'
-    $apply || { echo "  dry run: nothing pushed ($dir)"; exit 0; }
+    $apply || { echo "  dry run: nothing pushed"; exit 0; }
+    if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+      echo "branch $branch already exists on $repo; finish or close its PR (or delete the branch), then re-run"; exit 1
+    fi
     git push -qu origin "$branch" || { echo "push failed (write access?)"; exit 1; }
     # --head/-R: the clone is single-branch, so gh cannot see a tracking ref and aborts without them
     gh pr create -R "$repo" --head "$branch" --draft --base develop --title "chore(agents): commit the paperplane guard for Claude Code and omp" --body \
