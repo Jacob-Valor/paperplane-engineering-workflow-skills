@@ -120,13 +120,21 @@ def rel(paths, f):
         return str(f)
 
 
-def pick_sample(paths, n, seed, include_labeled=False):
+LEGACY = "legacy (judge only, one verdict)"
+
+
+def source_of(row):
+    return row.get("source", LEGACY)
+
+
+def pick_sample(paths, n, seed, include_labeled=False, source=None):
     """Stratified: shuffle each scenario's answers, then take round-robin across scenarios."""
     done = set() if include_labeled else set(latest_human(paths))
+    sources = {r["run"]: source_of(r) for r in read_jsonl(paths.labels)}
     by_sc = defaultdict(list)
     for f in sorted(paths.answers.glob("*.md")):
-        sid = scenario_of(f)
-        if sid and rel(paths, f) not in done:
+        sid, run = scenario_of(f), rel(paths, f)
+        if sid and run not in done and (source is None or sources.get(run) == source):
             by_sc[sid].append(f)
     rng = random.Random(seed)
     for files in by_sc.values():
@@ -159,8 +167,36 @@ def show(paths, f, i, total):
     print("\nANSWER\n" + f.read_text().strip() + "\n")
 
 
-def cmd_sample(paths, n, seed, relabel=None, input_fn=input, out=print):
-    files = [paths.root / relabel] if relabel else pick_sample(paths, n, seed)
+def cmd_import(paths, dirs, out=print):
+    """Copy the valid answers of finished runs into the label pool, with the run's final verdict (judge plus checks)."""
+    known = {r["run"] for r in read_jsonl(paths.labels)}
+    paths.answers.mkdir(parents=True, exist_ok=True)
+    added = 0
+    with paths.labels.open("a") as fh:
+        for d in dirs:
+            d = Path(d)
+            meta = json.loads((d / "run.json").read_text())
+            model, src = meta.get("model") or "default", f"{meta.get('judge_model') or 'default'} judge + checks"
+            for j in sorted(d.glob("s*/rep*.judge.json")):
+                verdict = json.loads(j.read_text())
+                answer = j.with_name(j.name.replace(".judge.json", ".answer.md"))
+                if verdict.get("invalid") or not answer.exists():
+                    continue
+                dest = paths.answers / f"{j.parent.name}-{model}-{d.name}-{j.name.split('.')[0]}.md"
+                run = rel(paths, dest)
+                if run in known:
+                    continue
+                dest.write_text(answer.read_text())
+                fh.write(json.dumps({"run": run, "scenario": j.parent.name, "model": model, "judge_pass": bool(verdict["pass"]),
+                                     "reason": verdict.get("reason", ""), "source": src}) + "\n")
+                known.add(run)
+                added += 1
+    out(f"imported {added} answers")
+    return 0
+
+
+def cmd_sample(paths, n, seed, relabel=None, input_fn=input, out=print, source=None):
+    files = [paths.root / relabel] if relabel else pick_sample(paths, n, seed, source=source)
     if not files:
         out("Nothing left to label.")
         return 0
@@ -172,6 +208,8 @@ def cmd_sample(paths, n, seed, relabel=None, input_fn=input, out=print):
             try:
                 key = input_fn("pass / fail / skip / quit [p/f/s/q]: ").strip().lower()
             except EOFError:
+                out("\ninput closed before a key was typed: stopping, nothing recorded for this answer. "
+                    "Run sample in an interactive terminal.")
                 key = "q"
             if key in ("p", "f", "s", "q"):
                 break
@@ -200,7 +238,8 @@ def compute(paths):
             missing.append(run)
             continue
         rows.append({"run": run, "scenario": h.get("scenario") or scenario_of(run), "human": bool(h["human_pass"]),
-                     "judge": bool(j["judge_pass"]), "label": j.get("label_pass"), "reason": j.get("reason", "")})
+                     "judge": bool(j["judge_pass"]), "label": j.get("label_pass"), "reason": j.get("reason", ""),
+                     "source": source_of(j)})
     return rows, missing
 
 
@@ -221,6 +260,12 @@ def cmd_report(paths, out=print):
     out(f"human labels with a judge verdict: {len(rows)}" + (f" ({len(missing)} without one, ignored)" if missing else ""))
     out(f"agreement human vs judge: {fmt(agree, len(rows))}")
     out("Cohen's kappa: " + ("n/a (one class only)" if k is None else f"{k:.2f}"))
+    by_src = defaultdict(list)
+    for r in rows:
+        by_src[r["source"]].append(r)
+    if len(by_src) > 1:
+        for src, rs in sorted(by_src.items()):
+            out(f"  {src}: agreement {fmt(sum(r['human'] == r['judge'] for r in rs), len(rs))}")
     with_label = [r for r in rows if isinstance(r["label"], bool)]
     if with_label:
         out(f"agreement human vs earlier agent label: {fmt(sum(r['human'] == r['label'] for r in with_label), len(with_label))}")
@@ -334,6 +379,28 @@ def self_test():
         cmd_report(paths, out=out2.append)
         expect("No human labels" in out2[0], "report with no labels says what to do")
 
+        run_dir = Path(td) / "out" / "20261029-000000"
+        for sid, rep, ok, invalid in (("s1", 1, True, False), ("s1", 2, False, False), ("s2", 1, False, True)):
+            (run_dir / sid).mkdir(parents=True, exist_ok=True)
+            (run_dir / sid / f"rep{rep}.answer.md").write_text(f"new answer {sid} {rep}")
+            (run_dir / sid / f"rep{rep}.judge.json").write_text(json.dumps({"pass": ok, "invalid": invalid, "reason": "r"}))
+        (run_dir / "run.json").write_text(json.dumps({"model": "sonnet", "judge_model": "opus"}))
+        cmd_import(paths, [run_dir], out=lambda *_: None)
+        cmd_import(paths, [run_dir], out=lambda *_: None)
+        new = [r for r in read_jsonl(paths.labels) if r.get("source") == "opus judge + checks"]
+        expect(sorted((r["run"].split("/")[-1], r["judge_pass"]) for r in new) ==
+               [("s1-sonnet-20261029-000000-rep1.md", True), ("s1-sonnet-20261029-000000-rep2.md", False)],
+               "import adds each valid answer once with the run's final verdict, and skips invalid runs")
+        only_new = pick_sample(paths, 50, seed=1, source="opus judge + checks")
+        expect(sorted(f.name for f in only_new) == ["s1-sonnet-20261029-000000-rep1.md", "s1-sonnet-20261029-000000-rep2.md"],
+               "sample --source offers only that judge's answers")
+        paths.human.write_text("\n".join(json.dumps({"run": r, "scenario": s, "human_pass": h}) for r, s, h in (
+            (judge_rows[0]["run"], "s1", judge_rows[0]["judge_pass"]), (new[0]["run"], "s1", not new[0]["judge_pass"]))) + "\n")
+        out3 = []
+        cmd_report(paths, out=out3.append)
+        expect("  legacy (judge only, one verdict): agreement 1/1" in "\n".join(out3) and
+               "  opus judge + checks: agreement 0/1" in "\n".join(out3), "report splits agreement by judge source")
+
     if failures:
         print(f"\n{len(failures)} self-test check(s) failed")
         return 1
@@ -349,13 +416,18 @@ def main(argv):
     sp.add_argument("--n", type=int, default=40)
     sp.add_argument("--seed", type=int, default=1)
     sp.add_argument("--relabel", metavar="RUN", help="show one saved answer again, e.g. tests/eval/labels/answers/s1-opus-skills-1.md")
+    sp.add_argument("--source", help=f"only answers graded by this judge, e.g. 'opus judge + checks' or '{LEGACY}'")
+    ip = sub.add_parser("import", help="add the answers of finished runs (tests/eval/out/<stamp>) to the pool")
+    ip.add_argument("dirs", nargs="+")
     sub.add_parser("report", help="compare human labels with the judge")
     args = ap.parse_args(argv)
     if args.self_test:
         return self_test()
     paths = Paths()
     if args.cmd == "sample":
-        return cmd_sample(paths, args.n, args.seed, args.relabel)
+        return cmd_sample(paths, args.n, args.seed, args.relabel, source=args.source)
+    if args.cmd == "import":
+        return cmd_import(paths, args.dirs)
     if args.cmd == "report":
         return cmd_report(paths)
     ap.print_usage(sys.stderr)

@@ -2,6 +2,13 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.18
+
+### Added: human labels for the current judge
+- `label.py import <run dirs>` adds the valid answers of finished runs to the label pool, with the run's final verdict (judge plus checks) and the judge that gave it. Re-importing adds nothing.
+- `label.py sample --source "opus judge + checks"` offers only answers graded by that judge. `report` shows agreement per judge when labels span more than one.
+- The pool now holds 79 answers from the v2026.10.15.16 and .17 runs (sonnet, judge opus with checks; 10 judged fail), next to the 30 older judge-only answers. No human labels yet: `tests/RESULTS.md`, "Human labels do not exist yet", has the 20-minute command.
+
 ## v2026.10.15.17
 
 The first sealed run of S50 to S56 (sonnet, judge opus): 14/21 overall, recorded as it came out. Of the seven failures, four were real and three were grader or harness errors. S50 to S57 are development scenarios from now on; a new generalisation claim needs a new sealed set.
