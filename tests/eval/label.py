@@ -208,6 +208,8 @@ def cmd_sample(paths, n, seed, relabel=None, input_fn=input, out=print, source=N
             try:
                 key = input_fn("pass / fail / skip / quit [p/f/s/q]: ").strip().lower()
             except EOFError:
+                out("\ninput closed before a key was typed: stopping, nothing recorded for this answer. "
+                    "Run sample in an interactive terminal.")
                 key = "q"
             if key in ("p", "f", "s", "q"):
                 break
