@@ -1,0 +1,39 @@
+name: paperplane-ready
+
+# The PR author comments `/ready` on their draft PR after the human review. The script checks the body and
+# `standard / checks`, then marks it ready. Runs the default branch's scripts; never checks out PR code.
+on:
+  issue_comment:
+    types: [created]
+
+# contents: write is needed by GitHub's markPullRequestReadyForReview mutation: with contents: read it fails
+# "Resource not accessible by integration" (seen live). Nothing here checks out or pushes PR code.
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read
+
+concurrency:
+  group: paperplane-ready-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  ready:
+    if: github.event.issue.pull_request && contains(github.event.comment.body, '/ready')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Check and mark ready
+        env:
+          PR: ${{ github.event.issue.number }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+          COMMENTER_TYPE: ${{ github.event.comment.user.type }}
+          COMMENT_ASSOCIATION: ${{ github.event.comment.author_association }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/paperplane-ready.sh

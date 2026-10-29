@@ -84,6 +84,8 @@ compliant() {
   serve "repos/$R/contents/.claude/hooks/paperplane-guard.sh?ref=develop" "$(cat "$GUARD")"
   serve "repos/$R/contents/.omp/hooks/pre/paperplane-guard.ts?ref=develop" "$(cat "$here/skills/paperplane-shipping-changes/hooks/omp-guard.ts")"
   serve "repos/$R/contents/AGENTS.md?ref=develop" "$(printf '# AGENTS.md\n## AI agents\nLoad the paperplane-* skills before any git or gh work.\n')"
+  serve "repos/$R/codeowners/errors?ref=develop" '{"errors":[]}'
+  serve "repos/$R/rules/branches/develop" '[{"type":"pull_request"},{"type":"required_status_checks"}]'
 }
 
 compliant
@@ -262,6 +264,46 @@ compliant
 serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}" bunfig.toml lock.json)"
 expect "audit: look-alike names are not bun lockfiles" 0 bash "$A" "$R"
 says "audit: pnpm-only passes without a foreign lockfile" '^PASS  pnpm-only '
+
+compliant
+serve "repos/$R/codeowners/errors?ref=develop" '{"errors":[{"line":2,"column":3,"kind":"Unknown owner","message":"Unknown owner on line 2: @ghost","path":".github/CODEOWNERS"}]}'
+expect "audit: CODEOWNERS errors fail" 1 bash "$A" "$R"
+says "audit: shows the first CODEOWNERS error" '^FAIL  codeowners-errors .*1 error\(s\), first: \.github/CODEOWNERS:2 Unknown owner on line 2: @ghost'
+serve "repos/$R/codeowners/errors?ref=develop" ""
+expect "audit: unreadable CODEOWNERS errors is a WARN only" 0 bash "$A" "$R"
+says "audit: names the codeowners-errors warning" '^WARN  codeowners-errors '
+
+compliant
+expect "audit: no merge queue, no merge-queue line" 0 bash "$A" "$R"
+if grep -q 'merge-queue' "$out"; then fail=$((fail+1)); echo "FAIL audit: merge-queue line without a queue"; else pass=$((pass+1)); echo "ok   audit: no merge-queue line without a queue"; fi
+serve "repos/$R/rules/branches/develop" '[{"type":"pull_request"},{"type":"merge_queue","parameters":{"merge_method":"SQUASH"}}]'
+expect "audit: merge queue without merge_group fails" 1 bash "$A" "$R"
+says "audit: names the stalled queue" '^FAIL  merge-queue .*no merge_group'
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's/^on:/on:\n  merge_group:/')"
+expect "audit: merge queue with merge_group passes" 0 bash "$A" "$R"
+says "audit: merge-queue passes" '^PASS  merge-queue '
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's/^on:/on: # merge_group:/')"
+expect "audit: merge_group only in a comment fails" 1 bash "$A" "$R"
+
+S="$work/skill"
+mkdir -p "$S/scripts" "$S/assets/.github/workflows" "$S/assets/.github/scripts"
+cp "$A" "$S/scripts/audit.sh"
+printf 'name: ready\n' > "$S/assets/.github/workflows/paperplane-ready.yml"
+printf 'echo ready\n' > "$S/assets/.github/scripts/paperplane-ready.sh"
+compliant
+expect "audit: no PR automation, no pr-automation-current line" 0 bash "$S/scripts/audit.sh" "$R"
+if grep -q 'pr-automation-current' "$out"; then fail=$((fail+1)); echo "FAIL audit: pr-automation-current without the workflows"; else pass=$((pass+1)); echo "ok   audit: pr-automation-current skipped when not installed"; fi
+serve "repos/$R/contents/.github/workflows?ref=develop" "$(names standard.yml paperplane-ready.yml)"
+serve "repos/$R/contents/.github/workflows/paperplane-ready.yml?ref=develop" "name: ready"
+serve "repos/$R/contents/.github/scripts/paperplane-ready.sh?ref=develop" "echo ready"
+expect "audit: current PR automation passes" 0 bash "$S/scripts/audit.sh" "$R"
+says "audit: pr-automation-current passes" '^PASS  pr-automation-current '
+serve "repos/$R/contents/.github/scripts/paperplane-ready.sh?ref=develop" "echo old"
+expect "audit: outdated PR automation is a WARN only" 0 bash "$S/scripts/audit.sh" "$R"
+says "audit: names the outdated asset" '^WARN  pr-automation-current .*\.github/scripts/paperplane-ready\.sh;'
+serve "repos/$R/contents/.github/scripts/paperplane-ready.sh?ref=develop" ""
+expect "audit: missing PR automation asset is a WARN only" 0 bash "$S/scripts/audit.sh" "$R"
+says "audit: names the missing asset" '^WARN  pr-automation-current .*paperplane-ready\.sh'
 
 expect "audit: usage error on a bad repo name" 2 bash "$A" demo-app
 expect "audit: --help exits 0" 0 bash "$A" --help

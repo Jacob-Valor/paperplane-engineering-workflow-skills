@@ -96,6 +96,15 @@ For each approved package, the PR's Risk gets one line `- <pkg>: <what its insta
   Only if the CTO wants them (team convention, not in the guide; `audit.sh` reports them): `--enable-rebase-merge=false`, `--enable-auto-merge`. Otherwise leave rebase merge as the CTO set it.
 - `protect-develop-uat-main` (team convention, not in the guide) appears in `gh api repos/$R/rulesets`. If it's missing, tell the CTO. Don't add a repo-level ruleset as a substitute.
 
+## PR automation (optional, the CTO decides)
+
+Team convention, not in the guide. To install, run `cp -R <this skill>/assets/.github/. .github/` in the `chore/engineering-standard` PR. It adds `workflows/paperplane-ready.yml`, `workflows/paperplane-merge-back.yml` and `scripts/paperplane-ready.sh`, `paperplane-merge-back.sh`, `check-pr-body.sh`.
+
+- `/ready`: the PR author's comment marks the PR ready once the body and `standard / checks` pass.
+- Merge-back: a pushed `prod-*` tag opens the two draft merge-back PRs when `main` has hotfix commits. The CTO allows it with `gh api -X PUT repos/$R/actions/permissions/workflow -f default_workflow_permissions=read -F can_approve_pull_request_reviews=true`. Code-owner review stays required, so an Actions approval never counts. Their `standard / checks` waits for a person to click "Approve and run" or mark the PR ready.
+- Merge queue on `develop` (optional): first add `merge_group:` to `on:` in `templates/standard.yml` of paperplanehq/paperplane-engineering, or the queue waits forever for `standard / checks`. Then the CTO adds a `merge_queue` rule (SQUASH) for `develop` only. `uat` and `main` use merge commits. On private org repos it may need GitHub Enterprise Cloud (to be checked).
+- Merging after approval without a click: the author turns on auto-merge. Agents never do.
+
 ## Done when
 
 The setup PR, once ready, shows `standard / checks` green in `gh pr checks`, and `standard / AI review (advisory)` has run (it never blocks and skips drafts). The step 1 audit is clean.
