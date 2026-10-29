@@ -1,0 +1,28 @@
+{
+  "argv": [
+    "--scenarios",
+    "s5,s7,s25,s57",
+    "--reps",
+    "3"
+  ],
+  "skill_ref": null,
+  "no_skills": false,
+  "model": null,
+  "judge_model": null,
+  "checks": true,
+  "baseline_context": null,
+  "fail_under": 1.0,
+  "scenarios": [
+    "s5",
+    "s7",
+    "s25",
+    "s57"
+  ],
+  "reps": 3,
+  "trigger": false,
+  "totals": {
+    "valid": 12,
+    "passed": 11,
+    "invalid": 0
+  }
+}

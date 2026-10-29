@@ -1,6 +1,6 @@
 ---
 name: paperplane-secret-incidents
-description: Paper Plane's process for leaked, flagged, or requested secrets; the CTO rotates. Use when a secret, API key, token, password, private key, service-account JSON, or .env file is involved in a paperplanehq repository — the gitleaks secret scan step of the `standard / checks` CI job failed, a credential was committed or pushed, a secret value or credential file is missing or needed, or someone asks to share env values in a PR, issue, chat, or AI tool.
+description: Paper Plane's process for leaked, flagged, or requested secrets; the CTO rotates. Use when a secret, API key, token, password, private key, service-account JSON, or .env file with real credentials is involved in a paperplanehq repository — the gitleaks secret scan step of the `standard / checks` CI job failed, a credential was committed or pushed, someone needs a credential's value or a credential file, or someone asks to share env values in a PR, issue, chat, or AI tool. Not for missing config that isn't secret, such as a URL or port.
 license: Proprietary
 metadata:
   author: paperplanehq

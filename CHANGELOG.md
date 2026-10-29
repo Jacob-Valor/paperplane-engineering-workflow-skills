@@ -2,6 +2,19 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.16
+
+Found by the first live eval of v2026.10.15.15 (sonnet). Results in `tests/RESULTS.md`, with saved runs under `tests/eval/results/`.
+
+### Fixed: skills
+- **secret-incidents**: the description no longer catches a missing non-secret env value ("API_URL is undefined" routed here 4/4, and 2/3 on the skills before v2026.10.15.15). Triggering 25/25 in 3 of 3 runs after the change.
+- **repo-setup**: file changes are staged by name, never `git add -A` or `git add .`. An S5 answer ran `git add -A && git commit` and nothing caught it.
+
+### Fixed: evals
+- S5: a `no_add_all` check and criterion; the auto-merge criterion passes an answer that offers `--enable-auto-merge` to the CTO as optional (it failed one that did exactly what the skill says). S5 5/5 after the change.
+- `run.py` writes the output path relative to the repo in `summary.md`, so saved results don't carry a local home folder.
+- S57 of the sealed set was run once by mistake in the post-merge check (3/3). It is recorded and spent; S50 to S56 stay sealed.
+
 ## v2026.10.15.15
 
 Second independent audit (skills, guard, evals and CI). Every guard fix was reproduced against the old hooks first: the new `test-hooks.sh` fails 104 tests on the previous guard.

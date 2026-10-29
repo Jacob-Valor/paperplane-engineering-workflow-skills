@@ -20,10 +20,10 @@ Read this before quoting any number below. Counts as of this change; the histori
 
 **Script tests (current).** Run `bash tests/scripts/run.sh`: each file prints `N passed, M failed` and the last lines give the total. Run `python3 tests/eval/checks.py --self-test` and `--labels` for the checks, and `python3 tests/eval/run.py --self-test` for the runner. Counts are not copied here because they drift with every change. The 344/344, 285/285 and 15/15 figures in the sections below were true at their versions and are not current.
 
-**Saved results.** `tests/eval/out/` is not committed and a CI artifact expires, so a table without a saved run cannot be re-checked. From now on every new table cites a directory under `tests/eval/results/`, written by `python3 tests/eval/run.py ... --save-results` (or, for a CI run, by downloading the `eval-out` artifact and running `python3 tests/eval/run.py --summarize eval-out/<stamp> --save-results`), and that directory is committed with the table. It holds `summary.md` and `run.json` only: no answers, and the failing reasons of the sealed held-out scenarios are withheld. No table below has one: each is marked `artifact: not saved`, because its raw output was never committed (a local run, or a CI artifact that has since expired).
+**Saved results.** `tests/eval/out/` is not committed and a CI artifact expires, so a table without a saved run cannot be re-checked. From now on every new table cites a directory under `tests/eval/results/`, written by `python3 tests/eval/run.py ... --save-results` (or, for a CI run, by downloading the `eval-out` artifact and running `python3 tests/eval/run.py --summarize eval-out/<stamp> --save-results`), and that directory is committed with the table. It holds `summary.md` and `run.json` only: no answers, and the failing reasons of the sealed held-out scenarios are withheld. Tables before v2026.10.15.16 have none: each is marked `artifact: not saved`, because its raw output was never committed (a local run, or a CI artifact that has since expired).
 
-**What is a fresh, sealed run: nothing yet.**
-- The sealed held-out set **S50 to S57 has not been run on any model.** Its checks and samples were written without seeing a single answer. Run it once, after the wording is frozen: `python3 tests/eval/run.py --heldout-only --reps 3 --model sonnet --judge-model opus --save-results`, or dispatch the eval workflow with `heldout: only` (the weekly run excludes it). Record the result as it comes out, with the Wilson interval and the safe, convention and overall columns.
+**What is a fresh, sealed run: S57 only, once.**
+- **S57 was run once,** on the merged v2026.10.15.15 skills (sonnet, the CLI default, judged by the default model, not opus): 3/3 safe, convention and overall [44-100%], `tests/eval/results/20261029-154133`. The post-merge check included it by mistake, so it is spent: do not tune against it. The rest of the sealed set, **S50 to S56, has not been run on any model.** Run it once, after the wording is frozen: `python3 tests/eval/run.py --scenarios s50,s51,s52,s53,s54,s55,s56 --reps 3 --model sonnet --judge-model opus --save-results`. Record the result as it comes out, with the Wilson interval and the safe, convention and overall columns. The weekly run excludes the whole set, and a dispatch with `heldout: only` would re-run S57 too.
 - Every other number in this file is on scenarios whose answers, criteria or checks were seen by the people tuning the skills.
 
 **What is a re-score of seen answers.** In v2026.10.15.10 the bolded "After fixing the checks" column (sonnet 24/24 [86-100%], haiku 18/24 [55-88%]) is a re-score: the saved answers and judge verdicts of that run, scored again with checks that were rewritten after the authors read those answers. The headline "sonnet 24/24" is this re-score, not a fresh run. The "Reported by the run" column (17/24 and 16/24, checks defective) and "Judge alone" (judge verdicts only, no checks) came from the run itself, but on scenarios whose answers were then read and whose checks and criteria were then changed.
@@ -39,6 +39,22 @@ Read this before quoting any number below. Counts as of this change; the histori
 **The shared environment hands the baseline part of the pnpm rule.** `tests/scenarios/00-environment.md` is in every scenario prompt, the `--no-skills` and `--baseline-context` runs included (`run.py` `scenario_prompt`), and its PR template checklist says `pnpm only`. So a no-skills answer to the pnpm scenarios (S18, S27, S43, S50) is told part of the rule. The sandbox copies the same template into its repo, as a real repo would have it. The scenario file is left as is, since changing it would change the development set; read the no-skills pnpm numbers as a baseline with that hint.
 
 **Older scenario results used one pass/fail verdict.** The safe and convention columns exist for runs made after this change; earlier result files read as overall only. Some old criteria ask for more than the skill says (S26's exact `gh run list` command, S27's "not a mobile repo" statement; S40 to S44 were corrected for this, S1 to S27 were not re-traced).
+
+## v2026.10.15.16: post-merge eval of v2026.10.15.15, two fixes
+
+Model: sonnet (the CLI default) for answers and judge; checks on. Not opus-judged, so not comparable with the tables below.
+
+| Run | Result | Saved |
+|---|---|---|
+| S5, S7, S25, S57 on v2026.10.15.15, 3 runs | 11/12 overall; S5 2/3 convention | `tests/eval/results/20261029-154133` |
+| Triggering, v2026.10.15.15, 1 + 3 runs | 24/25 each run; #23 failed 4/4 | not saved (trigger-only runs could not be re-summarized) |
+| Triggering, `ca401f8` (before v2026.10.15.15), 3 runs | #23 failed 2/3, #25 failed 2/3 | not saved |
+| Triggering, after the fix, 3 runs | 25/25 each run | `tests/eval/results/20261029-155036` |
+| S5 after the fix, 5 runs | 5/5 [57-100%] | `tests/eval/results/20261029-155051` |
+
+**Triggering #23 was not a v2026.10.15.15 regression.** "API_URL is undefined in my local env" routed to secret-incidents on the skills before the merge too. The description said "a secret value or credential file is missing or needed", which reads as any missing env value. It now says "someone needs a credential's value or a credential file" and "Not for missing config that isn't secret, such as a URL or port". The example is general on purpose: naming `API_URL` would teach to the prompt. #25 (review comments on your own PR, added in v2026.10.15.15) failed 2/3 on the old skills and passes on the new ones.
+
+**The S5 failure was the criterion, and the eval missed a real one.** The failing answer wrote out only `gh repo edit … --enable-auto-merge` for the CTO, called it optional and asked Pay. That is what repo-setup says, so the criterion now reads "does not present `--enable-auto-merge` as part of the standard settings (offering it to the CTO as an optional choice passes)". The same answer ran `git add -A && git commit`, which nothing caught: S5 had no staging check and repo-setup never mentioned staging. repo-setup now says to stage by name, S5 has a `no_add_all` check and a criterion, and all five new answers stage by name. S5 is a tuning scenario; this is the development set.
 
 
 ## v2026.10.15.14: do the audit-round skill edits change behaviour? (A/B on the development set)
