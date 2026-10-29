@@ -1,6 +1,6 @@
 ---
 name: paperplane-shipping-changes
-description: Paper Plane's rules for getting a change into develop through a branch and a draft PR. Use when making any code, config, or dependency change in a paperplanehq repository — creating a branch, committing, adding or updating packages, pushing, rebasing or force-pushing a branch, opening, stacking, or marking a pull request ready — and especially when asked to push straight to develop/uat/main, "just commit everything", turn on auto-merge for a PR, bundle unrelated changes, or skip the PR because of a deadline.
+description: Paper Plane's rules for getting a change into develop through a branch and a draft PR. Use when making any code, config, or dependency change in a paperplanehq repository — creating a branch, committing, adding or updating packages, pushing, rebasing or force-pushing a branch, opening, stacking, or marking a pull request ready, answering review comments on your own PR — and especially when asked to push straight to develop/uat/main, "just commit everything", turn on auto-merge for a PR, bundle unrelated changes, or skip the PR because of a deadline.
 license: Proprietary
 compatibility: Requires git, gh and pnpm; gitleaks recommended. Written for the paperplanehq GitHub org.
 metadata:
@@ -51,7 +51,7 @@ Deadlines and explicit requests don't change these. No exception is granted in t
    git push -u origin <branch>
    gh pr create --draft --base develop --title "<type(scope): summary>" --body-file "${TMPDIR:-/tmp}/pr-body.md"
    ```
-   Exit 1: don't push; a secret → **paperplane-secret-incidents**. Exit 3 (no `gitleaks`): read the full `git diff origin/develop...HEAD` for keys, then push. Body = the repo's `.github/pull_request_template.md`, every heading kept, `- Commands:`/`- iOS:`/`- Android:` lines kept (CI reads them). The first draft already has:
+   Exit 1: don't push; a secret → **paperplane-secret-incidents**. Exit 3 (no `gitleaks`): stop and ask the user to install it; or scan printing only `file:line`, never values: `git diff --name-only --diff-filter=d origin/develop...HEAD | xargs grep -nIiE 'key|secret|token|password|PRIVATE KEY' | cut -d: -f1,2`, and check each hit with the user before pushing. Body = the repo's `.github/pull_request_template.md`, every heading kept, `- Commands:`/`- iOS:`/`- Android:` lines kept (CI reads them). The first draft already has:
    - `AI-assisted: yes (<tool>) — <what you ran>`. You are the AI, so it is never `no`; the `yes / no` placeholder fails CI.
    - A Risk that says what could break and what is not done, in real words, e.g. `Risk: the camera permission prompt could fail on Android 14. Not done: dev-client build, Android device test.` If nothing is built yet (often for a native change), "Not done" names that build and the PR stays draft. Never `Not done: none`, never a bracketed placeholder.
 6. **Hand over**: show the full diff (`git diff origin/develop...HEAD`) and the PR URL. End your turn. The guide wants the diff reviewed before the PR is opened (§4, §7); the draft is open for visibility (§4) and Ready is the review gate.
