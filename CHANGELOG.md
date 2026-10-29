@@ -2,6 +2,33 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.15
+
+Second independent audit (skills, guard, evals and CI). Every guard fix was reproduced against the old hooks first: the new `test-hooks.sh` fails 104 tests on the previous guard.
+
+### Fixed: guard
+- `!` shell aliases are refused (`-c alias.x=!…`, `git config alias.x '!…'`); other aliases are judged by what they expand to. `git -c alias.g='!git' g push --no-verify origin HEAD:main` got past both the guard and the pre-push hook.
+- Protects its own install: the skill's `hooks/` and `scripts/`, omp's `<agent dir>/hooks/pre`, `.git/config`, `paperplane.*` config, `GIT_CONFIG*` and `GIT_EXEC_PATH` exports, and `PAPERPLANE_SKILL_DIR` (also unset by `git-pre-push`).
+- `gh api` endpoints are matched after stripping `?query` and a trailing `/`. An approve `event=` or graphql `query=` it cannot read (`@file`, `$VAR`, `$(…)`) is refused.
+- Now checked: `sh -c -e …`, `bash -c -- …`, `eval --`, `trap`, a dynamic `gh` subcommand, `unbuffer`/`chronic`, `git-push`, `noglob`/`=git`, and `${B:-main}` push targets. `~` is expanded; a folder that doesn't exist yet fails closed for bare and `HEAD` pushes.
+- Fails closed: the installed Claude Code hook turns any guard exit other than 0 or 2 into a block, and an unreadable command or cwd exits 2. The omp adapter finds the guard from its own folder, never from the call's cwd.
+- `install-git-hook.sh` refuses a `core.hooksPath` outside the repo unless `--global-hooks-path` is given. `--commit --uninstall` prints the exact files to commit.
+
+### Fixed: skills
+- The duplicated "Untrusted content" section is removed from releasing, reviewing-prs and repo-setup, and added to secret-incidents. Lint requires it exactly once in every skill.
+- `docs/open-questions-for-cto.md` cites skill sections instead of line numbers (which had drifted); lint checks the cited sections exist.
+- **reviewing-prs**: merge-back PRs pass the Base check, release and merge-back PRs skip the Identity check and merge with a merge commit.
+- **repo-setup**: the standard settings command drops `--enable-auto-merge` and `--enable-rebase-merge=false` (CTO-optional, matching the safe defaults); `R` is defined before use.
+- **releasing**: the release PR body has a `## Checklist`; the UAT and hotfix gates need a CTO comment on the PR or an issue, not a statement in the conversation.
+- **shipping-changes**: the description covers answering review comments on your own PR (triggering case 25). Without gitleaks, the fallback scan prints only file:line, never values.
+
+### Fixed: scripts, evals and CI
+- `gather.sh` prefixes every line of the PR body and file list with `| ` and flattens newlines in titles and author names, so PR text can't forge a `== section ==` or the `base:` line.
+- The weekly eval excludes the sealed held-out S50 to S57 (new `heldout` dispatch input, default exclude). `reps` must be 1 to 5 and `model` is a choice list. Cost and timeout math updated for 40 scenarios.
+- New `run.py --save-results` writes a committable `tests/eval/results/<stamp>/` (summary and `run.json`, no answers). Older RESULTS.md tables are marked as having no saved artifact; stale hard-coded test counts are replaced by `run.sh`'s total line.
+- `next-tag.sh --previous` orders by tag name, so lightweight tags and same-day `.10` above `.2` are right. `rollout-guard.sh` deletes its temp clones and reports an existing `chore/agent-guard` branch.
+- The S5 eval check no longer requires `--enable-auto-merge`.
+
 ## v2026.10.15.14
 
 Result of an independent three-reviewer audit (skills, guard, evals and CI). Every fix below was reproduced first.
