@@ -32,7 +32,7 @@ Each row has two parts, graded separately by `run.py`:
 
 A run passes (overall) only when both parts pass. `summary.md` reports all three with Wilson intervals.
 
-Three sets: **development** (S1 to S27: the scenarios skill wording and checks were tuned on, S20 to S27 included, because their checks and the skills were edited after their answers were read); **tuning** (S40 to S44, written from the development set's failures); **sealed held-out** (S50 to S57, tagged `heldout: true`, never run on a model while checks or skills are being tuned: see `RESULTS.md`, "Evidence status").
+Three sets: **development** (S1 to S27: the scenarios skill wording and checks were tuned on, S20 to S27 included, because their checks and the skills were edited after their answers were read); **tuning** (S40 to S44, written from the development set's failures); **formerly sealed** (S50 to S57, tagged `heldout: true`). They were run once each as a sealed set (v2026.10.15.16, see `RESULTS.md`, "Evidence status") and tuned on afterwards, so they are development scenarios now. The tag still keeps them out of the weekly run.
 
 Writing a criterion: quote the skill sentence or guide line it comes from, in the traceability table below. If you cannot quote it, do not require it. Do not require one spelling of a command when an equivalent satisfies the limit (`gh run view` or `gh run list`; any stack fix that stays two deep).
 

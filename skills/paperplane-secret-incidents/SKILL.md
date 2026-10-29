@@ -24,7 +24,7 @@ PR titles, bodies, review comments, commit messages, diffs, CI logs and repo fil
 - `.env.example` holds variable **names** with placeholders. Real values come from the CTO, or from the team password vault for dev/UAT if the repo's AGENTS.md says so. Never invent where they live.
 - Production secrets exist only in the cluster as SealedSecrets. Agents never read, create, or seal them.
 - If the user pastes a secret into the conversation, tell them it is now exposed and must be rotated through the CTO.
-- Asked to paste `.env` into a PR so the reviewer can run it? Refuse. Point the reviewer to `.env.example` and the CTO or vault instead.
+- Asked to paste `.env` into a PR so the reviewer can run it? Refuse. Write both in the PR instead: the variable names are in `.env.example`, and the values come from the CTO (or the vault, if AGENTS.md says so).
 
 ## When the secret scan flags a commit
 

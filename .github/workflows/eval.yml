@@ -29,7 +29,7 @@ on:
         description: "runs per scenario, 1 to 5"
         default: "3"
       heldout:
-        description: "sealed held-out S50-S57: exclude (default), include, or only. Run them once, after the wording is frozen (tests/RESULTS.md)"
+        description: "S50-S57 (tagged heldout; run once as the sealed set, now development): exclude (default), include, or only"
         type: choice
         options: [exclude, include, only]
         default: exclude
@@ -140,8 +140,8 @@ jobs:
       #                      asked instead of running pnpm (RESULTS.md: 1 of about 27).
       # Sandbox with enforcement off is informational, not a gate: it measures what the skills
       # alone hold, and haiku fails 15 of 27 there by design (RESULTS.md), so it must not be red.
-      # Every rate above is from tuning or development scenarios. Recalibrate the thresholds once
-      # the sealed S50-S57 run is recorded in tests/RESULTS.md.
+      # Every rate above is from tuning or development scenarios. The one sealed S50-S56 run scored
+      # 14/21 overall on sonnet (tests/RESULTS.md); recalibrate against a fresh run of the fixed skills.
       - name: Scenarios, triggering and sandbox
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

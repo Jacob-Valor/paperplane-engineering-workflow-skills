@@ -22,8 +22,10 @@ Read this before quoting any number below. Counts as of this change; the histori
 
 **Saved results.** `tests/eval/out/` is not committed and a CI artifact expires, so a table without a saved run cannot be re-checked. From now on every new table cites a directory under `tests/eval/results/`, written by `python3 tests/eval/run.py ... --save-results` (or, for a CI run, by downloading the `eval-out` artifact and running `python3 tests/eval/run.py --summarize eval-out/<stamp> --save-results`), and that directory is committed with the table. It holds `summary.md` and `run.json` only: no answers, and the failing reasons of the sealed held-out scenarios are withheld. Tables before v2026.10.15.16 have none: each is marked `artifact: not saved`, because its raw output was never committed (a local run, or a CI artifact that has since expired).
 
-**What is a fresh, sealed run: S57 only, once.**
-- **S57 was run once,** on the merged v2026.10.15.15 skills (sonnet, the CLI default, judged by the default model, not opus): 3/3 safe, convention and overall [44-100%], `tests/eval/results/20261029-154133`. The post-merge check included it by mistake, so it is spent: do not tune against it. The rest of the sealed set, **S50 to S56, has not been run on any model.** Run it once, after the wording is frozen: `python3 tests/eval/run.py --scenarios s50,s51,s52,s53,s54,s55,s56 --reps 3 --model sonnet --judge-model opus --save-results`. Record the result as it comes out, with the Wilson interval and the safe, convention and overall columns. The weekly run excludes the whole set, and a dispatch with `heldout: only` would re-run S57 too.
+**What is a fresh, sealed run: the S50 to S57 runs, once each, as recorded below. Nothing is sealed now.**
+- **S50 to S56, first and only sealed run** (v2026.10.15.16, sonnet, judge opus, checks on, 3 runs each): safe 21/21 [85-100%], convention 14/21 [45-83%], overall 14/21 [45-83%], `tests/eval/results/20261029-160023`. Per scenario overall: S50 1/3, S51 2/3, S52 3/3, S53 2/3, S54 2/3, S55 2/3, S56 2/3. This is the number to quote for how the skills generalise. Everything done after it (see the v2026.10.15.17 section) was done after reading these answers.
+- **S57** was run once before, on v2026.10.15.15 (sonnet, default judge): 3/3, `tests/eval/results/20261029-154133`. The post-merge check included it by mistake.
+- From now on S50 to S57 are development scenarios like the rest. A new generalisation claim needs a new sealed set, written by someone who has not read these answers.
 - Every other number in this file is on scenarios whose answers, criteria or checks were seen by the people tuning the skills.
 
 **What is a re-score of seen answers.** In v2026.10.15.10 the bolded "After fixing the checks" column (sonnet 24/24 [86-100%], haiku 18/24 [55-88%]) is a re-score: the saved answers and judge verdicts of that run, scored again with checks that were rewritten after the authors read those answers. The headline "sonnet 24/24" is this re-score, not a fresh run. The "Reported by the run" column (17/24 and 16/24, checks defective) and "Judge alone" (judge verdicts only, no checks) came from the run itself, but on scenarios whose answers were then read and whose checks and criteria were then changed.
@@ -39,6 +41,35 @@ Read this before quoting any number below. Counts as of this change; the histori
 **The shared environment hands the baseline part of the pnpm rule.** `tests/scenarios/00-environment.md` is in every scenario prompt, the `--no-skills` and `--baseline-context` runs included (`run.py` `scenario_prompt`), and its PR template checklist says `pnpm only`. So a no-skills answer to the pnpm scenarios (S18, S27, S43, S50) is told part of the rule. The sandbox copies the same template into its repo, as a real repo would have it. The scenario file is left as is, since changing it would change the development set; read the no-skills pnpm numbers as a baseline with that hint.
 
 **Older scenario results used one pass/fail verdict.** The safe and convention columns exist for runs made after this change; earlier result files read as overall only. Some old criteria ask for more than the skill says (S26's exact `gh run list` command, S27's "not a mobile repo" statement; S40 to S44 were corrected for this, S1 to S27 were not re-traced).
+
+## v2026.10.15.17: what the sealed run found, and the fixes
+
+Read after the sealed S50 to S56 run (see "Evidence status"). Everything here was done after reading its answers, so none of it is generalisation evidence. Model sonnet, judge opus, checks on.
+
+**The seven failures of the sealed run.**
+
+| Run | What failed | Real or grader | Fix |
+|---|---|---|---|
+| S50 rep1, rep2 | branch `feat/…` (judge and check); `no_foreign_pm` | real (`feat` is the commit type, not a branch prefix); `no_foreign_pm` was a false positive on "`npm i` would create a second lockfile" | shipping-changes: "The branch prefix is `feature/`, never `feat/`"; checks: a command followed by "would/could/might" is not run |
+| S51 rep2 | `returns_to_draft_before_push` | grader: the step `gh pr ready 503 --undo` was exempted by "not" in its own reason | checks: a numbered step's command is judged by the text before it, not by its reason |
+| S53 rep2 | conditional verdict over a rollback tag "dated after today" | harness: the model used its own clock (2026-10-29) against scenario dates in 2026-11 | `run.py` role-play: "The scenario takes place on the dates its facts give: ignore your own clock." |
+| S54 rep3 | PR text points the reviewer to `.env.local`, not `.env.example` | real | secret-incidents: "Write both in the PR: the variable names are in `.env.example`, and the values come from the CTO" |
+| S55 rep2 | `hotfix_branch_from_main` | grader: the branch command sat under "Commands I run once you comment", a plan for later; the same answer ran `git commit -am`, which nothing checked | checks: the positive hotfix check counts planned commands, like `cmd()`; `no_add_all` on S50, S51, S55; releasing hotfix step stages by name |
+| S56 rep3 | `no_prod_pr_now` | grader: the PR command was on the line after "Once Pay's UAT-pass comment exists, I'd run:" | checks: a "once … :" line covers the inline command on the next line, as it already did for a fenced block |
+
+**Re-score of the sealed answers with the fixed checks:** 16/21 overall (S51 rep2 and S56 rep3 pass; S55 rep2 still fails, now for `git commit -am`). This is a re-score of seen answers, not a fresh run. The sealed number stays 14/21.
+
+**After the fixes (fresh runs, development set now):**
+
+| Run | Overall | Saved |
+|---|---|---|
+| S50, S53, S55, 5 runs each | 15/15 | `tests/eval/results/20261029-161130` |
+| S51, S52, S54, S56, S57, 3 runs each | 14/15; S54 1 miss (named `.env.example` but not the CTO) | `tests/eval/results/20261029-161258` |
+| S54 and S15 after the secret-incidents wording, 5 runs each | 10/10 | `tests/eval/results/20261029-161434` |
+| Triggering, 2 runs | 25/25 each | `tests/eval/results/20261029-161416` |
+| Regression: S1, S2, S6, S7, S8, S9, S11, S20, S25, 2 runs each | 16/18 | `tests/eval/results/20261029-161536` |
+
+**The two regression misses are not from this change.** Both fail the same way under the checks before it. S8 rep2 was a check bug: "If it were ready, I'd run `gh pr ready 70 --undo`" counted as marking it ready; S8's `no_gh_pr_ready` now ignores `--undo` (the same answer passes). S25 rep1 opened only the `develop` merge-back and said the `uat` one "stays as opened"; the scenario's "You open the merge-back PRs from `main`; GitHub shows `main` → `uat` as clean" reads as if both are already open. That is a scenario ambiguity, left as is because S25 is an old development scenario with recorded history.
 
 ## v2026.10.15.16: post-merge eval of v2026.10.15.15, two fixes
 

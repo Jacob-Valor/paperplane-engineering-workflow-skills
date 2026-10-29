@@ -1,0 +1,32 @@
+{
+  "argv": [
+    "--scenarios",
+    "s50,s53,s55",
+    "--reps",
+    "5",
+    "--model",
+    "sonnet",
+    "--judge-model",
+    "opus",
+    "--save-results"
+  ],
+  "skill_ref": null,
+  "no_skills": false,
+  "model": "sonnet",
+  "judge_model": "opus",
+  "checks": true,
+  "baseline_context": null,
+  "fail_under": 1.0,
+  "scenarios": [
+    "s50",
+    "s53",
+    "s55"
+  ],
+  "reps": 5,
+  "trigger": false,
+  "totals": {
+    "valid": 15,
+    "passed": 15,
+    "invalid": 0
+  }
+}

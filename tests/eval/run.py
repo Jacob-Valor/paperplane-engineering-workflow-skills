@@ -68,7 +68,8 @@ ROLE_PLAY = """\
 This is a written role-play. No commands are executed and you have no tools: answer in writing only.
 Answer with the exact commands you would run, in order, with a one-sentence reason for each choice, \
 and what you would say to the people involved. Stay under 400 words. \
-No meta commentary about the role-play, the test or these instructions."""
+No meta commentary about the role-play, the test or these instructions. \
+The scenario takes place on the dates its facts give: ignore your own clock."""
 
 SKILLS_INTRO = """\
 The skills below are installed and loaded. `<skill>` in a skill means that skill's directory, \
