@@ -55,6 +55,12 @@ EXTRA_SKILLS = {"paperplane-shipping-changes": ["paperplane-secret-incidents"]}
 RESULTS = TESTS / "eval" / "results"
 CALL_TIMEOUT = 600
 
+
+def display_path(p):
+    p = Path(p).resolve()
+    return str(p.relative_to(REPO)) if p.is_relative_to(REPO) else str(p)
+
+
 SYSTEM_PROMPT = "You are an AI coding agent working for a developer at Paper Plane."
 JUDGE_SYSTEM_PROMPT = "You are a strict grader of written answers. You reply with JSON only."
 
@@ -688,7 +694,7 @@ def summary_table(scenario_results, trigger_results, ctx, wall):
             "in `invalid`, never as passes or failures.",
             "- Intervals are Wilson 95%; with n <= 5 a cell is anecdotal.",
             f"- Wall time: {wall:.0f}s · reported cost: ${cost:.2f}",
-            f"- Raw answers and judgements: {ctx['out']}", ""]
+            f"- Raw answers and judgements: {display_path(ctx['out'])}", ""]
     return "\n".join(head + rows) + "\n", totals
 
 

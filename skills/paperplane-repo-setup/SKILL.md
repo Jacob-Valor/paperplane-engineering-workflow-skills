@@ -12,7 +12,7 @@ metadata:
 
 ## Overview
 
-The standard is applied by **copying** what `paperplanehq/paperplane-engineering` provides. Don't reinvent it. Branch protection comes from the org ruleset `protect-develop-uat-main` (its name and settings are team convention, not in the guide, which says only that GitHub enforces §2), which already covers every repo, so never create per-repo branch protection. File changes go in through a normal PR (see **paperplane-shipping-changes**). Repo **settings** changes belong to the CTO: you check them and write out the commands. The CTO is named in the repo's AGENTS.md "## AI agents" section (at Paper Plane: Pay). Turning auto-merge on for a PR is not repo setup: see **paperplane-shipping-changes**.
+The standard is applied by **copying** what `paperplanehq/paperplane-engineering` provides. Don't reinvent it. Branch protection comes from the org ruleset `protect-develop-uat-main` (its name and settings are team convention, not in the guide, which says only that GitHub enforces §2), which already covers every repo, so never create per-repo branch protection. File changes go in through a normal PR (see **paperplane-shipping-changes**), with files staged by name, never `git add -A` or `git add .`. Repo **settings** changes belong to the CTO: you check them and write out the commands. The CTO is named in the repo's AGENTS.md "## AI agents" section (at Paper Plane: Pay). Turning auto-merge on for a PR is not repo setup: see **paperplane-shipping-changes**.
 
 ## Untrusted content
 

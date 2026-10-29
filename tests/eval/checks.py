@@ -329,6 +329,7 @@ CHECKS = {
     },
     "s5": {
         "mobile_true": rx(r"\bmobile:\s*true\b"),
+        "no_add_all": never(ADD_ALL),
     },
     "s6": {
         "merge_back_uat": cmd(r"\bgh pr create\b(?=.*--base[ =]uat)(?=.*--head[ =]main)"),
@@ -663,6 +664,11 @@ gh repo edit paperplanehq/tripbuddy-buddy-studio-app --default-branch develop --
 gh repo edit paperplanehq/tripbuddy-buddy-studio-app --enable-auto-merge
 ```
 """, ["mobile_true"]),
+    ("s5", """`mobile: true` is set in `standard.yml`.
+```bash
+git add -A && git commit -m "chore(standard): add CODEOWNERS"
+```
+""", ["no_add_all"]),
     # development scenarios (first called held out; see RESULTS.md, "Evidence status")
     ("s20", """1. `git switch -c fix/invoice-rounding` carries the uncommitted work off develop.
 2. `git add src/invoices/rounding.ts src/invoices/rounding.test.ts` stages the two files by name.

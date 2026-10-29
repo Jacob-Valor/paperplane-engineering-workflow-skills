@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "--trigger",
+    "--reps",
+    "3",
+    "--save-results"
+  ],
+  "skill_ref": null,
+  "no_skills": false,
+  "model": null,
+  "judge_model": null,
+  "checks": true,
+  "baseline_context": null,
+  "fail_under": 1.0,
+  "scenarios": [],
+  "reps": 3,
+  "trigger": true,
+  "totals": {
+    "valid": 75,
+    "passed": 75,
+    "invalid": 0
+  }
+}
