@@ -329,7 +329,6 @@ CHECKS = {
     },
     "s5": {
         "mobile_true": rx(r"\bmobile:\s*true\b"),
-        "enable_auto_merge_for_cto": rx(r"--enable-auto-merge(?!=false)"),
     },
     "s6": {
         "merge_back_uat": cmd(r"\bgh pr create\b(?=.*--base[ =]uat)(?=.*--head[ =]main)"),
@@ -655,6 +654,15 @@ gh pr edit 70 --base develop
     ("s10", """**Verdict: don't approve yet. Request changes.**
 You can run `gh pr review 71 --approve` once Dara removes the debug log.
 """, []),
+    ("s5", """`.github/workflows/standard.yml` gets `mobile: true`. For Pay (CTO) to run, not me:
+```bash
+gh repo edit paperplanehq/tripbuddy-buddy-studio-app --default-branch develop --enable-squash-merge --enable-merge-commit --delete-branch-on-merge
+```
+""", []),
+    ("s5", """```bash
+gh repo edit paperplanehq/tripbuddy-buddy-studio-app --enable-auto-merge
+```
+""", ["mobile_true"]),
     # development scenarios (first called held out; see RESULTS.md, "Evidence status")
     ("s20", """1. `git switch -c fix/invoice-rounding` carries the uncommitted work off develop.
 2. `git add src/invoices/rounding.ts src/invoices/rounding.test.ts` stages the two files by name.
@@ -1093,8 +1101,8 @@ For now I send Pay the question and open nothing.
     ("s57", """I do not create branch protection: the org ruleset `protect-develop-uat-main` covers this repo and is missing, so I tell Pay (the CTO).
 For Pay to run, not me:
 ```bash
-gh repo edit paperplanehq/phsar-market-web --enable-squash-merge --enable-merge-commit \
-  --enable-rebase-merge=false --delete-branch-on-merge --enable-auto-merge
+gh repo edit paperplanehq/phsar-market-web --default-branch develop --enable-squash-merge --enable-merge-commit \
+  --delete-branch-on-merge
 ```
 ```bash
 git switch develop && git pull && git switch -c chore/engineering-standard

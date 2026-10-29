@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
 # Installs (or removes) the paperplane git pre-push hook in the current repo.
-# Usage: bash hooks/install-git-hook.sh [--block-force-push] [--uninstall]
+# Usage: bash hooks/install-git-hook.sh [--block-force-push] [--global-hooks-path] [--uninstall]
 # Respects core.hooksPath. An existing pre-push hook that is not ours moves to
 # pre-push.local and keeps running first. Running it again updates the hook.
 # --block-force-push also blocks non-fast-forward pushes in this clone (for clones only
 #   agents push from; people may rebase and force-push their own branches).
 # --uninstall removes our hook, unsets that option and puts pre-push.local back.
+# --global-hooks-path allows a core.hooksPath outside this repo (a folder other repos
+#   share, so the hook then runs for all of them); without it the install refuses.
 # Exit codes: 0 done · 1 could not install · 2 usage error or not in a git repo
 set -uo pipefail
 
-usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; }
 uninstall=0
 block_force=0
+global_ok=0
 for arg in "$@"; do
   case "$arg" in
     --uninstall) uninstall=1 ;;
     --block-force-push) block_force=1 ;;
+    --global-hooks-path) global_ok=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $arg"; usage; exit 2 ;;
   esac
@@ -55,6 +59,22 @@ case "$(git config --get core.hooksPath)" in
     echo "add this line to .husky/pre-push instead: bash $(printf '%q' "$src") \"\$@\""
     exit 1 ;;
 esac
+real() { # real <path>: absolute, symlinks resolved for the part that exists
+  local p=$1 rest=""
+  while [ ! -d "$p" ]; do rest="/${p##*/}$rest"; p=${p%/*}; [ -n "$p" ] || p=/; done
+  printf '%s%s\n' "$(cd -P "$p" && pwd)" "$rest"
+}
+if [ -n "$(git config --get core.hooksPath)" ] && [ "$global_ok" -eq 0 ]; then
+  common=$(git rev-parse --git-common-dir) || exit 2
+  case "$common" in /*) ;; *) common="$top/$common" ;; esac
+  h=$(real "$hooks"); t=$(real "$top"); c=$(real "$common")
+  case "$h/" in
+    "$t/"*|"$c/"*) ;;
+    *) echo "core.hooksPath ($hooks) is outside this repo; a hook there runs for every repo that uses that folder."
+       echo "rerun with --global-hooks-path if that is what you want, or install it from .husky/ or the repo's own hooks folder"
+       exit 1 ;;
+  esac
+fi
 [ -f "$src" ] || { echo "missing $src; reinstall the skill"; exit 1; }
 mkdir -p "$hooks" || { echo "cannot create $hooks"; exit 1; }
 

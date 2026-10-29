@@ -12,6 +12,7 @@
 # push is blocked unless PAPERPLANE_ALLOW_NO_GITLEAKS=1 (then read `git log -p` for keys).
 # A foreign hook saved as pre-push.local next to this file runs first.
 # Exit codes: 0 push allowed · 1 push blocked
+unset PAPERPLANE_SKILL_DIR # only install-git-hook.sh sets it (after the next line), never the caller's environment
 set -uo pipefail
 
 case "${1:-}" in
