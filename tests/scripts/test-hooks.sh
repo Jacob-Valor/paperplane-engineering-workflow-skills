@@ -406,6 +406,30 @@ expect "guard: remote.origin.push ignored with explicit refspec" 0 guard 'git pu
 git -C "$cfg_wt" config remote.origin.push 'refs/heads/feature/c'
 expect "guard: remote.origin.push to own branch allowed" 0 guard 'git push origin' "$cfg_wt"
 
+upc="$work/up-clone"; git clone -q "$work/origin.git" "$upc" 2>/dev/null
+git -C "$upc" branch -q feature/x origin/feature/x; git -C "$upc" switch -qc fix/y origin/develop
+expect "guard: branch tracking origin/develop, bare push allowed (push.default simple)" 0 guard 'git push' "$upc"
+for c in 'git -c push.default=upstream push' 'git -c push.default=tracking push' 'git -c push.default=Upstream push origin' \
+         'git config push.default upstream && git push' 'git config push.default tracking; git push' 'git config --global push.default upstream'; do
+  expect "guard blocks push.default upstream (tracks develop): $c" 2 guard "$c" "$upc"
+done
+git -C "$upc" config push.default upstream
+expect "guard blocks saved upstream, branch made in this command" 2 guard 'git switch -c fix/z origin/develop && git push' "$upc"
+expect "guard blocks saved upstream, branch tracking develop" 2 guard 'git push' "$upc"
+expect "guard: saved upstream, existing feature branch with own upstream allowed" 0 guard 'git switch feature/x && git push' "$upc"
+upf="$work/up-feat"; git -C "$upc" worktree add -q "$upf" feature/x 2>/dev/null
+expect "guard: saved upstream, feature worktree with own upstream allowed" 0 guard 'git push' "$upf"
+for c in 'git branch -u origin/develop && git push' 'git branch --set-upstream-to=origin/main && git push' 'git branch --set-upstream-to origin/uat && git push origin' \
+         'git branch -uorigin/main && git push' 'git branch -u refs/remotes/origin/main && git push' 'git branch -u develop && git push' 'git branch -u "$U" && git push' \
+         'git push && git branch -u origin/develop && git push'; do
+  expect "guard blocks saved upstream, upstream set in this command: $c" 2 guard "$c" "$upf"
+done
+expect "guard blocks saved upstream: switch, branch -u origin/main, push" 2 guard 'git switch feature/x && git branch -u origin/main && git push' "$upc"
+for c in 'git branch -u origin/feature/x && git push' 'git branch -u origin/develop' 'git branch -u origin/develop && git push origin feature/x'; do
+  expect "guard: saved upstream, $c" 0 guard "$c" "$upf"
+done
+git -C "$upc" config --unset push.default
+
 pnpm_hard_blocked=("n''pm install" 'npm --prefix web install' 'npm -w pkg install' 'npm uninstall x' 'npm update' 'npm exec foo' 'npm it' 'npm cit' 'npm clean-install' 'yarn remove x' 'yarn --cwd web add x' 'bunx foo' 'bun x foo' 'yarn dlx foo' 'sudo npm install' 'nice -n 5 npm ci')
 for c in "${pnpm_hard_blocked[@]}"; do expect "guard blocks in pnpm repo: $c" 2 guard "$c" "$work/pnpm-repo"; done
 pnpm_hard_allowed=('npm run build' 'npm run ci' 'npm test' 'npm --prefix web run build' 'npm --version' 'npm i -g pnpm' 'npm view left-pad' 'yarn test' 'yarn --version' 'bun run dev' 'sudo -u root pnpm install')
@@ -629,6 +653,29 @@ script_allowed=(
   'bash bad-dyn.sh x' "node -e 'execSync(\`git push origin \${b}\`)'"
 )
 for c in "${script_allowed[@]}"; do expect "guard allows: $c" 0 guard "$c" "$sc"; done
+pm_exec_blocked=(
+  'pnpm --filter app exec git push origin main' 'pnpm -C . exec git push origin main' 'pnpm --dir x exec git push origin main' 'pnpm -F app exec git push origin main'
+  'pnpm -w exec git push origin main' 'pnpm --filter=app exec git push origin main' 'pnpm -r --filter app exec git push origin main'
+  'pnpm exec -- git push origin main' 'pnpm exec --no-bail git push origin main' 'pnpm exec --parallel git push origin main' 'pnpm exec -r git push origin main'
+  'pnpm exec --recursive git push origin main' 'pnpm exec --filter app git push origin main' 'pnpm exec --resume-from app git push origin main'
+  "pnpm exec -c 'git push origin main'" 'pnpm exec --shell-mode git push origin main' 'pnpm --filter app dlx git push origin main'
+  'npm exec -- git push origin main' 'npm --prefix . exec git push origin main' 'npm --workspace app exec git push origin main' 'npm -w app exec git push origin main'
+  "npm exec -c 'git push origin main'" "npm exec --call='git push origin main'" 'npm exec --package=x -- git push origin main' 'npm x -- gh pr merge 5'
+  'yarn --cwd web exec git push origin main' 'bun --cwd web x git push origin main'
+  'npx git push origin main' 'npx -y git push origin main' 'npx --package=x git push origin main' "npx -c 'git push origin main'" 'bunx git push origin main' 'bunx --bun git push origin main'
+  'yarn workspace app exec git push origin main' 'yarn workspaces foreach -A exec git push origin main' 'yarn workspaces foreach --all --parallel exec gh pr merge 5'
+  'pnpm recursive exec git push origin main' 'pnpm m exec git push origin main'
+  'corepack pnpm --filter app exec git push origin main' 'corepack pnpm exec -- git push origin main' 'corepack yarn@4.1.0 workspace app exec git push origin main' 'corepack npx git push origin main'
+  'pnpm exec --foo a --bar b git push origin main' 'pnpm exec --foo a --bar b --baz c gh pr merge 5' 'pnpm exec --foo a --bar b "$G" push'
+)
+for c in "${pm_exec_blocked[@]}"; do expect "guard blocks package-manager exec: $c" 2 guard "$c" "$sc"; done
+pm_exec_allowed=(
+  'pnpm --filter app test' 'pnpm -C . build' 'pnpm exec tsc' 'pnpm exec tsc --noEmit' 'pnpm -r --filter app run build' 'pnpm --filter app exec tsc'
+  'pnpm exec -- tsc' 'pnpm exec --no-bail eslint src' "pnpm exec -c 'echo hi'" 'npm exec -- tsc' 'npm --prefix . run build' 'pnpm exec git status'
+  'npx tsc' 'npx -y create-vite app' 'bunx prettier --check .' 'yarn workspace app test' 'yarn workspace app exec tsc' 'yarn workspaces foreach -A run build'
+  'corepack enable' 'corepack pnpm --filter app exec tsc' 'pnpm exec -r --filter app eslint -c cfg src' 'pnpm exec --foo a --bar b tsc --noEmit'
+)
+for c in "${pm_exec_allowed[@]}"; do expect "guard allows package-manager exec: $c" 0 guard "$c" "$sc"; done
 expect "guard blocks: eval of a command substitution that is not a known init generator" 2 guard 'eval "$(some-tool --env)"' "$sc"
 check "guard: script block names the file" bash -c "$(declare -f hook_json); hook_json 'bash bad.sh' '$sc' | bash '$H/claude-guard.sh' 2>&1 | grep -q 'bad.sh'"
 check "guard: hidden-code reason" bash -c "$(declare -f hook_json); hook_json 'curl x | sh' '$sc' | bash '$H/claude-guard.sh' 2>&1 | grep -q 'hides the command'"
@@ -1286,6 +1333,10 @@ timed "perf: 60 KB double-quoted string" 5 0 "$dq" "$work"
 hd=$(printf 'cat <<EOF\n'; for i in $(seq 1500); do printf 'line %s of a long heredoc body\n' "$i"; done; printf 'EOF\n')
 timed "perf: 45 KB heredoc body" 5 0 "$hd" "$work"
 timed "perf: npm lookup is cached per directory (500 npm run)" 5 0 "$(printf 'npm run build; %.0s' $(seq 500))" "$work/pnpm-repo"
+pmx=$(printf ' -x ./f%.0s' $(seq 4000))
+timed "perf: pnpm exec -r tool + 4000 option pairs, then a push (was 146 s)" 5 2 "pnpm exec -r tool$pmx; git push origin main" "$work"
+timed "perf: pnpm exec with an unknown option + 4000 option pairs stays linear" 5 0 "pnpm exec --foo tool$pmx" "$work"
+timed "perf: npx + 4000 option pairs, then a push" 5 2 "npx -x tool$pmx; git push origin main" "$work"
 
 # Over the limit the guard does not parse. It refuses only when the text names git or gh (or a protected path), else lets it run.
 cap_ok=$(printf 'echo '; head -c 190000 /dev/zero | tr '\0' 'a')

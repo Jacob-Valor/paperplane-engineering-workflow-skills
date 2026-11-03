@@ -4,7 +4,7 @@
 Usage:
   python3 tests/eval/run.py [--scenarios s1,s9|all] [--reps 3] [--skill-ref <git-ref> | --no-skills]
                             [--model <name>] [--judge-model <name>] [--jobs 4] [--no-checks]
-                            [--out tests/eval/out] [--trigger] [--dry-run] [--fail-under RATE]
+                            [--out tests/eval/out] [--trigger] [--dry-run] [--fail-under RATE] [--scenario-floor]
                             [--baseline-context FILE] [--summarize DIR] [--save-results]
                             [--heldout-only | --exclude-heldout] [--self-test]
 
@@ -30,8 +30,10 @@ tests/eval/out is not committed and a CI artifact expires. --save-results (with 
 writes summary.md and run.json to tests/eval/results/<stamp>/, which is committed: every new table in
 tests/RESULTS.md cites one. It holds no answers, and the failing reasons of sealed held-out scenarios are withheld.
 
-Exit codes: 0 overall pass rate over valid runs >= --fail-under (default 1.0: every valid run passed) ·
-1 below it · 2 usage error · 3 no valid run
+Exit codes: 0 overall pass rate over valid runs >= --fail-under (default 1.0: every valid run passed) and
+no scenario breaks the floor · 1 below it, or more than a third of a scenario's runs are invalid (with --reps 1,
+any invalid run), or, with --scenario-floor, a scenario with >= 2 valid runs passed none of them · 2 usage error
+· 3 no valid run
 """
 
 import argparse
@@ -168,6 +170,24 @@ def self_test_two_part(expect):
     expect(exit_code(8, 10, 0, 0.9) == 1, "exit 1: 8/10 is below --fail-under 0.9")
     expect(exit_code(5, 5, 4, 1.0) == 0, "invalid runs are left out of the rate")
     expect(exit_code(0, 0, 3, 0.0) == 3, "exit 3: no valid run, even at --fail-under 0")
+    expect(exit_code(9, 10, 0, 0.5, ["s1: 0/2 valid runs passed"]) == 1, "exit 1: a floor problem fails a met rate")
+    expect(exit_code(0, 0, 3, 0.0, ["s1: 3/3 runs invalid"]) == 3, "exit 3 still wins over a floor problem")
+
+    def runs(sid, *outcomes):
+        return [{"scenario": sid, "rep": i, "pass": o == "p", **({"invalid": True} if o == "i" else {})}
+                for i, o in enumerate(outcomes, 1)]
+    expect(scenario_floor(runs("s1", "p", "f", "f") + runs("s2", "p", "p", "p"), red=True) == [],
+           "floor: a scenario with one pass is not fully red")
+    expect(scenario_floor(runs("s1", "f", "f", "f") + runs("s2", "p", "p", "p"), red=True) == ["s1: 0/3 valid runs passed"],
+           "floor: a fully red scenario fails even when the overall rate is 50%")
+    expect(scenario_floor(runs("s1", "f", "f", "f"), red=False) == [],
+           "floor: without --scenario-floor a fully red scenario is left to --fail-under")
+    expect(scenario_floor(runs("s1", "f"), red=True) == [], "floor: one valid failing run is not enough to call a scenario red")
+    expect(scenario_floor(runs("s1", "p", "p", "i"), red=False) == [], "floor: 1/3 invalid is allowed")
+    expect(scenario_floor(runs("s1", "p", "i", "i"), red=False) == ["s1: 2/3 runs invalid"],
+           "floor: 2/3 invalid fails, with or without --scenario-floor")
+    expect(scenario_floor(runs("s10", "i", "f", "f"), red=True) == ["s10: 0/2 valid runs passed"],
+           "floor: 1/3 invalid plus 0/2 valid passes reports only the red scenario")
     scenarios, rows_crit = load_scenarios(), load_pass_criteria()
     sealed = sorted(sc["num"] for sc in scenarios.values() if sc["heldout"])
     expect(sealed == list(range(50, 58)), f"only S50-S57 are tagged held out ({sealed})")
@@ -636,11 +656,33 @@ def rate_or_na(passed, total):
     return rate(passed, total) if total else "n/a"
 
 
-def exit_code(passed, valid, invalid, fail_under):
-    """0 when the pass rate over valid runs meets fail_under, 1 when below it, 3 when there is no valid run."""
+def scenario_floor(scenario_results, red):
+    """Per-scenario gate problems the overall rate can hide: more than a third of a scenario's runs invalid (they
+    drop out of the rate), and, when red is set (--scenario-floor), a scenario with >= 2 valid runs and no pass.
+    red is off for haiku in CI: its threshold is set to tolerate one weak scenario going 0/3 by chance."""
+    by_scenario = {}
+    for r in scenario_results:
+        by_scenario.setdefault(r["scenario"], []).append(r)
+    problems = []
+    for sid in sorted(by_scenario, key=lambda s: int(s[1:])):
+        runs = by_scenario[sid]
+        passed, valid = tally(runs, "pass")
+        invalid = len(runs) - valid
+        if red and valid >= 2 and passed == 0:
+            problems.append(f"{sid}: 0/{valid} valid runs passed")
+        if invalid * 3 > len(runs):
+            problems.append(f"{sid}: {invalid}/{len(runs)} runs invalid")
+    return problems
+
+
+def exit_code(passed, valid, invalid, fail_under, floor=()):
+    """0 when the pass rate over valid runs meets fail_under and no scenario breaks the floor (scenario_floor),
+    1 otherwise, 3 when there is no valid run."""
     if valid == 0:
         return 3
-    return 1 if passed / valid < fail_under - 1e-9 else 0
+    for problem in floor:
+        log(f"gate: {problem}")
+    return 1 if floor or passed / valid < fail_under - 1e-9 else 0
 
 
 def summary_table(scenario_results, trigger_results, ctx, wall):
@@ -713,7 +755,8 @@ def save_results(root, scenario_results, trigger_results, ctx, meta, wall=0):
 def parse_args(argv):
     parser = argparse.ArgumentParser(
         description="Run the agent scenarios and the triggering test with the claude CLI.",
-        epilog="Exit codes: 0 pass rate over valid runs >= --fail-under, 1 below it, 2 usage error, 3 no valid run.")
+        epilog="Exit codes: 0 pass rate over valid runs >= --fail-under and no scenario breaks the floor, "
+               "1 otherwise, 2 usage error, 3 no valid run.")
     parser.add_argument("--scenarios", default=None,
                         help="comma-separated ids (s1,s9) or 'all' (default: all, unless --trigger)")
     parser.add_argument("--reps", type=int, default=3, help="runs per scenario (default 3)")
@@ -724,6 +767,8 @@ def parse_args(argv):
                              "so the baseline is not asked about house conventions no model could know")
     parser.add_argument("--fail-under", type=float, default=1.0, metavar="RATE",
                         help="exit 1 only when the overall pass rate over valid runs is below RATE, 0..1 (default 1.0)")
+    parser.add_argument("--scenario-floor", action="store_true",
+                        help="also exit 1 when any scenario with >= 2 valid runs passed none of them")
     parser.add_argument("--summarize", default=None, metavar="DIR",
                         help="print the summary of a finished run directory (reads *.judge.json; calls nothing)")
     parser.add_argument("--model", default=None, help="claude model for answers and grading")
@@ -799,7 +844,7 @@ def read_baseline_context(path):
     return file.read_text()
 
 
-def summarize_dir(directory, fail_under, save=False):
+def summarize_dir(directory, fail_under, save=False, red=False):
     """Rebuild summary.md from the *.judge.json files of a finished run. Older files (no safe/convention parts,
     no invalid flag) still read: they count in the overall column only."""
     out = Path(directory).resolve()
@@ -817,7 +862,7 @@ def summarize_dir(directory, fail_under, save=False):
     print(text)
     if save:
         log(f"saved to {save_results(RESULTS, results, [], ctx, meta)}")
-    return exit_code(totals["passed"], totals["valid"], totals["invalid"], fail_under)
+    return exit_code(totals["passed"], totals["valid"], totals["invalid"], fail_under, scenario_floor(results, red))
 
 
 def main(argv):
@@ -825,7 +870,7 @@ def main(argv):
     if args.self_test:
         return self_test()
     if args.summarize:
-        return summarize_dir(args.summarize, args.fail_under, args.save_results)
+        return summarize_dir(args.summarize, args.fail_under, args.save_results, args.scenario_floor)
     baseline_context = read_baseline_context(args.baseline_context)
     source = SkillSource(args.skill_ref)
     available = load_scenarios()
@@ -914,7 +959,8 @@ def main(argv):
     print(text)
     if args.save_results:
         log(f"saved to {save_results(RESULTS, scenario_results, trigger_results, ctx, meta, wall)}")
-    return exit_code(totals["passed"], totals["valid"], totals["invalid"], args.fail_under)
+    return exit_code(totals["passed"], totals["valid"], totals["invalid"], args.fail_under,
+                     scenario_floor(scenario_results, args.scenario_floor))
 
 
 if __name__ == "__main__":

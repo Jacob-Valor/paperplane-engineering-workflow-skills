@@ -64,6 +64,7 @@ jobs:
         run: |
           python3 -m py_compile tests/eval/run.py tests/eval/checks.py tests/eval/label.py tests/eval/sandbox/run.py
           python3 tests/eval/checks.py --self-test
+          python3 tests/eval/checks.py --labels
           python3 tests/eval/label.py --self-test
           python3 tests/eval/run.py --self-test
           git config --global user.name "eval bot"; git config --global user.email "eval@example.com"
@@ -134,7 +135,10 @@ jobs:
       #                      2-3/5; 0.60 is under every measured haiku rate, so it trips on a real
       #                      regression, not on one bad scenario.
       #   sonnet/opus  0.85  measured 93-100% (70/70 and 93/95 to 94/95); 0.85 allows about 14
-      #                      misses in 32 scenarios x 3 reps and still catches a real drop.
+      #                      misses in 32 scenarios x 3 reps and still catches a real drop. These also
+      #                      run --scenario-floor: one scenario going 0/3 is red, since at these rates it
+      #                      is a regression, not chance. Haiku doesn't: some haiku cells sit near 50%.
+      #   all models         more than a third of a scenario's runs invalid is red (with reps=1, any).
       #   triggering   0.90  36/36 and 60/60 on every model; one miss in 25 prompts x 3 is noise.
       #   sandbox, hook and guard on  0.90  every run passed except one haiku add-lodash run that
       #                      asked instead of running pnpm (RESULTS.md: 1 of about 27).
@@ -151,8 +155,8 @@ jobs:
           HELDOUT: ${{ inputs.heldout || 'exclude' }}
         run: |
           case "$MODEL" in
-            haiku) under=0.60 ;;
-            sonnet|opus) under=0.85 ;;
+            haiku) under=0.60; floor= ;;
+            sonnet|opus) under=0.85; floor=--scenario-floor ;;
             *) echo "::error::model must be haiku, sonnet or opus, got '$MODEL'"; exit 2 ;;
           esac
           case "$REPS" in
@@ -169,7 +173,7 @@ jobs:
           status=0
           worst() { [ "$1" -eq 0 ] && return 0; if [ "$status" -eq 0 ] || [ "$1" -lt "$status" ]; then status=$1; fi; }
           python3 tests/eval/run.py --scenarios "$SCENARIOS" ${heldout:+"$heldout"} --reps "$REPS" --model "$MODEL" \
-            --judge-model opus --jobs 4 --fail-under "$under" --out eval-out || worst $?
+            --judge-model opus --jobs 4 --fail-under "$under" ${floor:+"$floor"} --out eval-out || worst $?
           python3 tests/eval/run.py --trigger --reps 3 --model "$MODEL" --fail-under 0.90 --out eval-out || worst $?
           git config --global user.name "eval bot"; git config --global user.email "eval@example.com"
           python3 tests/eval/sandbox/run.py --reps 2 --model "$MODEL" --enforcement on --jobs 4 \

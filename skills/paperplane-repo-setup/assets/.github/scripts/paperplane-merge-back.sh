@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Opens the hotfix merge-back drafts (main -> uat, main -> develop) for a prod-* tag, as paperplane-releasing asks.
 # Env: TAG (prod-*), GH_REPO, GH_TOKEN. Runs in a full clone with origin/main, origin/uat, origin/develop and the tags.
-# Opens nothing for a target that has every non-merge commit of TAG, or that already has an open PR from main.
+# Opens nothing for a target that has every non-merge commit of TAG, or that already has an open PR from this repo's
+# main or from chore/merge-back-$TAG (the manual replacement for a conflicting draft). A chore/merge-back branch of
+# another tag does not count: it lacks this tag's commits. Fork PRs are ignored.
 set -uo pipefail
 
 : "${TAG:?TAG is required}"
@@ -9,6 +11,8 @@ set -uo pipefail
 printf '%s' "$TAG" | grep -Eq '^prod-[A-Za-z0-9._-]+$' || { echo "TAG '$TAG' is not a prod-* tag"; exit 2; }
 git rev-parse -q --verify "refs/tags/$TAG^{commit}" >/dev/null || { echo "tag $TAG not found in this clone"; exit 2; }
 git rev-parse -q --verify refs/remotes/origin/main >/dev/null || { echo "origin/main not found in this clone"; exit 2; }
+
+owner=${GH_REPO%%/*}
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/pp-merge-back.XXXXXX") || exit 1
 trap 'rm -rf "$tmp"' EXIT
@@ -24,10 +28,19 @@ for target in uat develop; do
     continue
   fi
 
-  open=$(gh pr list --head main --base "$target" --state open --json number --jq length) \
+  heads=$(gh pr list --base "$target" --state open --limit 200 --json number,headRepositoryOwner,headRefName \
+    --jq '.[] | "\(.headRepositoryOwner.login) \(.headRefName) \(.number)"') \
     || { echo "gh pr list for $target failed"; rc=1; continue; }
-  if [ "${open:-0}" != 0 ]; then
-    echo "an open PR from main into $target already exists; skipping"
+  existing=""
+  while read -r pr_owner pr_head pr_num; do
+    [ "$pr_owner" = "$owner" ] || continue
+    case $pr_head in
+      main) existing="an open PR from main into $target already exists (#$pr_num); skipping"; break ;;
+      "chore/merge-back-$TAG") existing="an open PR from $pr_head into $target already exists (#$pr_num); skipping" ;;
+    esac
+  done <<< "$heads"
+  if [ -n "$existing" ]; then
+    echo "$existing"
     continue
   fi
 
