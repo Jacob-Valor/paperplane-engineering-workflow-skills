@@ -45,7 +45,7 @@ It prints, in order: the PR (state, draft, base, head, size), the body, `gh pr c
 | Lockfiles | Repo has `pnpm-lock.yaml`: any `package-lock.json`, `yarn.lock`, `bun.lock` or `bun.lockb` is a blocker; remove it (don't ask "which manager?"). If `package.json` changed, `pnpm-lock.yaml` changed too. Repo isn't on pnpm yet: the PR must not add a *second* lockfile or switch managers. Note that migration is a separate `chore/pnpm` PR |
 | New dependencies | Install-script deps are approved in `pnpm-workspace.yaml` with a reason. GitHub deps are pinned to a SHA |
 | Tests | New logic (especially money, auth, dates) has tests |
-| Mobile (TripBuddy/Sanaam/Studio apps) | Verified on iOS **and** Android with named devices, A stricter AGENTS.md wins; a narrower one doesn't (guide §4) |
+| Mobile (TripBuddy/Sanaam/Studio apps) | Verified on iOS **and** Android with named devices, A stricter AGENTS.md wins; a narrower one doesn't (guide §4). Release and merge-back PRs: devices were checked in each merged PR, so skip this row for them; a hotfix PR into `main` still needs it |
 | Generated files | No `dist/`, `coverage/`, or build output |
 | Size | Under about 400 lines, not counting lockfiles. Release, hotfix and merge-back PRs: Size, Leftovers and Tests apply to the individual merged PRs, not the release PR. Bigger: a `Size:` reason in the body, else ask for a split (not a blocker if the reason is strong) |
 | Identity | Commit authors are the PR author's own identity; AI `Co-authored-by` entries are fine: `gh pr view N --json commits --jq '.commits[].authors[].login'`. Release and merge-back PRs carry everyone's commits: skip this check for them |

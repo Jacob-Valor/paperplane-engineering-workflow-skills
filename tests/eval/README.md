@@ -20,7 +20,8 @@ python3 tests/eval/run.py --scenarios s1,s9 --dry-run              # print the p
 | `--skill-ref` | working tree | Read `skills/` from this git ref (tag, branch, commit) |
 | `--no-skills` | off | Leave the skills out: shows what each skill adds. Not with `--skill-ref` or `--trigger` |
 | `--baseline-context` | none | With `--no-skills`: add this file to the prompt as the repo's AGENTS.md (see below). `baseline-context.md` is the stock file |
-| `--fail-under` | `1.0` | Exit 1 only when the overall pass rate over **valid** runs is below this (0 to 1). The default keeps "any failure exits 1" |
+| `--fail-under` | `1.0` | Exit 1 when the overall pass rate over **valid** runs is below this (0 to 1). The default keeps "any failure exits 1". The invalid-run floor applies at any value (see Invalid runs) |
+| `--scenario-floor` | off | Also exit 1 when one scenario with 2 or more valid runs passed none of them. CI sets it for sonnet and opus, not haiku, whose weak cells go 0/3 by chance |
 | `--summarize` | none | Print the summary of a finished run directory from its `*.judge.json` files; calls nothing |
 | `--model` | claude default | Model for the answers (and the grading, unless `--judge-model`) |
 | `--judge-model` | `--model` | Model for the grading. Keep it fixed when you compare answer models |
@@ -53,7 +54,7 @@ python3 tests/eval/run.py --scenarios all --no-skills --baseline-context tests/e
 
 `baseline-context.md` states the house facts (branch flow, tag formats, pnpm only, merge-back naming, the CTO's name, the agent rules) without saying what to do in any scenario. Result files from before the split have no `safe_pass`/`convention_pass`; they still read, and count in the overall column only (`n/a` in the other two).
 
-**Invalid runs.** A run whose `claude` call fails or times out, or whose judge reply cannot be read, is `invalid`: it is listed in its own column and left out of every rate, like the sandbox runner does. Exit codes: 0 when the overall pass rate over valid runs is at least `--fail-under` (default `1.0`: every valid run passed) · 1 below it · 2 usage error · 3 no valid run at all.
+**Invalid runs.** A run whose `claude` call fails or times out, or whose judge reply cannot be read, is `invalid`: it is listed in its own column and left out of every rate, like the sandbox runner does. So a rate cannot hide them, the gate fails when more than a third of a scenario's runs are invalid (with `--reps 1`, any invalid run). With `--scenario-floor` it also fails when a scenario with 2 or more valid runs passed none of them (it went fully red). Exit codes: 0 when the overall pass rate over valid runs is at least `--fail-under` (default `1.0`: every valid run passed) and no scenario breaks the floor · 1 otherwise · 2 usage error · 3 no valid run at all.
 
 ## Intervals, development and held-out scenarios
 
@@ -89,15 +90,15 @@ done
 
 A scenario that passes without skills on every model doesn't test the skill. A scenario that fails on several models points to unclear wording, not to a weak model.
 
-Exit codes: 0 pass rate over valid runs at least `--fail-under` · 1 below it · 2 usage error · 3 no valid run.
+Exit codes: 0 pass rate over valid runs at least `--fail-under` and no scenario breaks the floor · 1 below it, more than a third of a scenario's runs invalid, or (with `--scenario-floor`) a scenario with 2 or more valid runs that passed none of them · 2 usage error · 3 no valid run.
 
 The grader is a model too. Read the answers of every failing run, and a sample of passing ones, before you change a skill or record results in `../RESULTS.md`.
 
 ## Grader checks
 
-`python3 tests/eval/checks.py --self-test` tests the checks on sample answers, passing and failing, for S1-S14, the development set S20-S27, the tuning set S40-S44 and the sealed S50-S57 (CI runs it). The S50-S57 samples were written by the scenario authors; no model has answered those scenarios. A bad command injected into a passing answer is caught in these spellings: `HEAD:refs/heads/develop`, quoted branch names, `git -C <dir>`, `sudo`, env-var prefixes, `git add -- .`, `git add src/ .`; and a command after a closed "message to Pay" section is the agent's, not exempt. `python3 tests/eval/checks.py <run dir>` re-scores saved answers with no model calls. `python3 tests/eval/checks.py --labels` compares the checks with `labels/labels.jsonl`.
+`python3 tests/eval/checks.py --self-test` tests the checks on sample answers, passing and failing, for S1-S14, the development set S20-S27, the tuning set S40-S44 and the sealed S50-S57 (CI runs it). The S50-S57 samples were written by the scenario authors; no model has answered those scenarios. A bad command injected into a passing answer is caught in these spellings: `HEAD:refs/heads/develop`, quoted branch names, `git -C <dir>`, `sudo`, env-var prefixes, `git add -- .`, `git add src/ .`; and a command after a closed "message to Pay" section is the agent's, not exempt. `python3 tests/eval/checks.py <run dir>` re-scores saved answers with no model calls. `python3 tests/eval/checks.py --labels` compares the checks with the hand labels (CI runs it): the newest `human_pass` in `labels/human.jsonl`, else `label_pass` in `labels/labels.jsonl`. Rows with neither are skipped and counted.
 
-`labels/labels.jsonl` has 30 answers from the 2026-10-16 benchmark, each read by hand against its criteria row. `run` points to the saved answer in `labels/answers/`, named `<scenario>-<model>-<skills|base>-<n>.md`. The labels are an agent's careful independent read, not a human's. The opus judge agreed on 28 of 30 (93%). Owner: run the human spot-check below (or at least spot-check 10 rows, including the two where `judge_pass` ≠ `label_pass`) and correct any label you disagree with.
+`labels/labels.jsonl` has 109 answers. 30 are from the 2026-10-16 benchmark, each read by hand against its criteria row (`label_pass`). The other 79 are from the 2026-10-29 run, imported by `label.py` with only the judge's verdict (`source: "opus judge + checks"`, no `label_pass`) as the pool for the human spot-check. `run` points to the saved answer in `labels/answers/`, named `<scenario>-<model>-<skills|base>-<n>.md`. The 30 labels are an agent's careful independent read, not a human's. The opus judge agreed on 28 of those 30 (93%). Owner: run the human spot-check below (or at least spot-check 10 rows, including the two where `judge_pass` ≠ `label_pass`) and correct any label you disagree with.
 
 ## Human spot-check
 

@@ -35,6 +35,9 @@
 #    heredoc, here-string or pipe is scanned the same way;
 #  - remote hops it cannot parse (ssh/docker/kubectl running a far-side script, git
 #    inside a Makefile target or a CI job); "docker run img git push ..." is unwrapped;
+#  - pnpm/npm/yarn/bun exec, npx and bunx with more than two options after exec whose
+#    values could be the command: the rest is refused when it names git or gh, but a
+#    script it runs (bash x.sh) is not read;
 #  - protected-file changes made by programs it does not know (python -c
 #    "open(...)", cp from a script), find -delete with a name pattern that does not
 #    mention the file (find . -name '*.json' -delete from the repo root), rm -rf .git
@@ -169,6 +172,7 @@ R_GHFILE="gh api graphql with query=@file or --input hides the mutation; put the
 R_DYNPUSH="name the branch literally: the guard cannot see what \$VAR, \${...} or \$(...) holds, and the branch you are on is develop/uat/main (or unknown here) or xargs feeds the refs"
 R_DYNCMD="the command word is a variable or substitution the guard cannot see through; write git and gh literally"
 R_HIDDEN="piping decoded or downloaded text into a shell (or eval/sh -c of a substitution) hides the command; run the command itself"
+R_PMEXEC="too many options after exec to tell what it runs; put the options before exec (pnpm --filter app exec ...)"
 R_SELF="the guard and its settings are the CTO's to change; do not remove, edit or disable them"
 R_SKIPHOOK="HUSKY=0, HUSKY_SKIP_HOOKS, LEFTHOOK=0, SKIP= and PRE_COMMIT_ALLOW_NO_CONFIG turn off the repo's hooks; let the hooks run"
 R_REFWRITE="moving develop/uat/main with update-ref or branch -f/-m/-d rewrites a protected branch; a human does that"
@@ -203,6 +207,18 @@ vb_get() { # sets VB when this command moved HEAD in the directory being checked
   local v
   case "$VARS" in
     *$'\n@vb='*) v=${VARS#*$'\n@vb='}; v=${v%%$'\n'*}; [ "${v%%$'\t'*}" = "$gdir" ] || return 1; VB=${v#*$'\t'} ;;
+    *) return 1 ;;
+  esac
+}
+up_set() { # up_set <upstream>: git branch -u in this command; "?" for one the guard cannot read
+  local v=$1
+  case "$v" in ''|*$'\n'*|*"$SOH"*|*"$STX"*|*"$ETX"*) v='?' ;; esac
+  VARS=$'\n'"@up=$gdir"$'\t'"$v$VARS"
+}
+up_get() { # sets UP when this command set an upstream in the directory being checked
+  local v
+  case "$VARS" in
+    *$'\n@up='*) v=${VARS#*$'\n@up='}; v=${v%%$'\n'*}; [ "${v%%$'\t'*}" = "$gdir" ] || return 1; UP=${v#*$'\t'} ;;
     *) return 1 ;;
   esac
 }
@@ -353,16 +369,27 @@ check_refspec() {
 }
 
 check_bare_push() { # check_bare_push <remote or empty>: what a push with no refspec reaches
-  local b rem v key
+  local b rem v key VB UP=""
   cur_branch; b=$CB
   [ -n "$b" ] || return 0
-  key="$GDOVR|$gdir|${1:-}|$b" # the same bare push again in one command: already judged and allowed
+  up_get
+  key="$GDOVR|$gdir|${1:-}|$b|$UP" # the same bare push again in one command: already judged and allowed
   case "$BARE_SEEN" in *$'\n'"$key"$'\n'*) return 0 ;; esac
   fork_budget; fork_budget; fork_budget
   rem=${1:-$(gitc config --get "branch.$b.remote" 2>/dev/null)}
   rem=${rem:-origin}
   case "$(gitc config --get push.default 2>/dev/null)" in
-    upstream|tracking) check_refspec "$(gitc config --get "branch.$b.merge" 2>/dev/null)" ;;
+    upstream|tracking) # pushes to the branch's upstream
+      if [ -n "$UP" ]; then # git branch -u <upstream> earlier in this command: origin/develop is develop
+        [ "$UP" = '?' ] && { block "$R_PROTECTED"; return; }
+        v=${UP#refs/remotes/}; check_refspec "$v"
+        case "$v" in */*) [ -z "$reason" ] && check_refspec "${v#*/}" ;; esac
+      else
+        v=$(gitc config --get "branch.$b.merge" 2>/dev/null)
+        # a branch switched to in this command has no upstream on disk yet
+        if [ -z "$v" ] && { [ "$b" = '?' ] || vb_get; }; then block "$R_PROTECTED"; return; fi
+        check_refspec "$v"
+      fi ;;
     *) check_refspec HEAD ;;
   esac
   while IFS= read -r v; do [ -n "$v" ] && check_refspec "$v"; done <<EOF
@@ -595,10 +622,18 @@ track_symref() { # git symbolic-ref HEAD refs/heads/<branch>
   [ "$n" -eq 2 ] && [ -n "$tgt" ] && vb_set "${tgt#refs/heads/}"
   return 0
 }
-track_branch() { # git branch -m/-M <new>: the branch you are on gets a new name
+track_branch() { # git branch -m/-M <new>: the branch you are on gets a new name; -u <upstream>: a new upstream
   local a n=0 mv=0 nm=""
-  for a in "$@"; do
-    case "$a" in -m|-M|--move) mv=1 ;; -*) ;; *) n=$((n+1)); nm=$a ;; esac
+  while [ $# -gt 0 ]; do
+    a=$1; shift
+    case "$a" in
+      -m|-M|--move) mv=1 ;;
+      -u|--set-upstream-to) up_set "${1-}"; [ $# -gt 0 ] && shift ;;
+      --set-upstream-to=*) up_set "${a#*=}" ;;
+      -u?*) up_set "${a#-u}" ;;
+      -*) ;;
+      *) n=$((n+1)); nm=$a ;;
+    esac
   done
   [ "$mv" -eq 1 ] && [ "$n" -eq 1 ] && vb_set "$nm"
   return 0
@@ -703,7 +738,7 @@ hooky_kv() { # hooky_kv <key> <value>: true for settings that skip the hook or a
   shopt -s nocasematch
   case "$k" in
     core.hookspath*|include.path|includeif.*.path) r=0 ;;
-    push.default) case "$v" in matching*|'?unknown') r=0 ;; esac ;;
+    push.default) case "$v" in matching*|upstream*|tracking*|'?unknown') r=0 ;; esac ;; # upstream: a branch made from origin/develop pushes to develop
     remote.*.push) r=0 ;;
     branch.*.merge) is_protected_branch "$v" && r=0 ;;
     alias.*) case "$v" in *push*|*merge*|*verify*|*hookspath*|'?unknown') r=0 ;; esac
@@ -844,6 +879,43 @@ is_cmd() { # words a wrapper (sudo, env, xargs, ssh, ...) may be running
   case "$b" in git|git-?*|gh|npm|npx|yarn|bun|bunx|find|bash|sh|zsh|dash|ksh|mksh|ash|fish|csh|tcsh|eval|source|trap) return 0 ;; esac
   case "$b" in rm|mv|cp|tee|sponge|truncate|chmod|chown|chgrp|unlink|shred|ln|install|rsync|dd|sed|gsed|perl|ruby|awk|gawk|python|python2|python3|python3.*|node|nodejs) return 0 ;; esac
   return 1
+}
+
+pm_run() { # pm_run <shell 0|1> <words...>: what pnpm/npm/yarn/bun exec runs; 1: one shell command line (exec -c)
+  local sh=$1; shift
+  if [ "$sh" -eq 1 ]; then
+    case "$*" in *"$STX"*|"\$$SOH"*) block "$R_HIDDEN"; return ;; esac
+    check_string "$*"
+  else
+    check_words "$@"
+  fi
+}
+
+pm_exec() { # pm_exec <words after exec/x/dlx, or after npx/bunx>: check the command it runs
+  # An option's arity is not known (--filter app, --package x), so the word after one may be its value:
+  # check from that word and from the next. A third guess is not parsed (that made this quadratic);
+  # the rest is refused when it names git or gh or hides a word.
+  local sh=0 pv=0 n=0 c
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --) shift; [ $# -gt 0 ] && pm_run "$sh" "$@"; return ;;
+      -c|--call|--shell-mode) sh=1; pv=0 ;; # the rest is a shell command line
+      -c=*|--call=*) c=${1#*=}; shift; pm_run 1 "$c" "$@"; return ;;
+      -r|--recursive|--parallel|--no-bail|--bail|--sort|--no-sort|--reverse|--report-summary|-s|--silent|-q|--quiet|-y|--yes|--no|--no-yes|--ws|--workspaces|--include-workspace-root|--if-present|-*=*) pv=0 ;;
+      -*) pv=1 ;;
+      *)
+        if [ "$n" -ge 2 ]; then
+          case " $* " in *"$SOH"*|*"$STX"*) block "$R_PMEXEC"; return ;; esac
+          [[ " $* " =~ [[:space:]/=](git|gh)([^[:alnum:]_]|$) ]] && block "$R_PMEXEC"
+          return
+        fi
+        pm_run "$sh" "$@"; n=$((n+1))
+        [ -n "$reason" ] && return
+        [ "$pv" -eq 1 ] || return
+        pv=0 ;;
+    esac
+    shift
+  done
 }
 
 check_npm() {
@@ -1150,7 +1222,7 @@ check_words() {
       [A-Za-z_]*=*) skipvar "$1" && skipenv=1; asg+=("$1"); shift ;;
       function) shift; [ $# -gt 0 ] && shift ;; # function f { ...; }: the body is the commands after the brace
       if|then|else|elif|fi|do|done|while|until|for|select|case|'esac'|'!'|'{'|'}'|noglob|nocorrect) shift ;;
-      sudo|doas|env|command|builtin|nohup|time|exec|nice|ionice|setsid|stdbuf|xargs|watch|ssh|su|script|runuser|flock|busybox|chroot|docker|docker-compose|podman|nerdctl|kubectl|parallel|pkexec|caffeinate|arch|gosu|su-exec|unbuffer|chronic|*/sudo|*/doas|*/env|*/nohup|*/nice|*/xargs|*/docker-compose|*/ssh|*/watch|*/setsid|*/stdbuf|*/ionice|*/time|*/command|*/unbuffer|*/chronic)
+      sudo|doas|env|command|builtin|nohup|time|exec|nice|ionice|setsid|stdbuf|xargs|watch|ssh|su|script|runuser|flock|busybox|chroot|docker|docker-compose|podman|nerdctl|kubectl|parallel|pkexec|caffeinate|arch|gosu|su-exec|unbuffer|chronic|corepack|*/sudo|*/doas|*/env|*/nohup|*/nice|*/xargs|*/docker-compose|*/ssh|*/watch|*/setsid|*/stdbuf|*/ionice|*/time|*/command|*/unbuffer|*/chronic|*/corepack)
         case "$1" in xargs|*/xargs|parallel) viax=1 ;; esac
         shift; wrapped=1
         while [ $# -gt 0 ] && ! is_cmd "$1"; do
@@ -1236,17 +1308,25 @@ check_words() {
       k='~'; for a in "$@"; do case "$a" in -) k=-; break ;; -*) ;; *) k=$a; break ;; esac; done
       move_dir "$k" "$edir"; edir=$ND; return 0 ;;
     python|python2|python3|python3.*|node|nodejs|ruby|perl) check_interp "$@" ;;
+    npx|bunx) pm_exec "$@" ;; # npx git push ...: check what it runs
     pnpm|npm|yarn|bun) # pnpm exec git push ...: check what it runs
-      if [ $# -gt 0 ]; then
-        local -a pa=("$@"); local pi=0
-        while [ "$pi" -lt "${#pa[@]}" ]; do
-          case "${pa[pi]}" in
-            -*) pi=$((pi+1)) ;;
-            exec|x|dlx) pi=$((pi+1)); [ "$pi" -lt "${#pa[@]}" ] && check_words "${pa[@]:pi}"; break ;;
-            *) break ;;
-          esac
-        done
-      fi ;;
+      # An option's arity is not known (--filter app, -C ., -r), so skip one word after an option before
+      # the subcommand; yarn workspace <name> / workspaces foreach and pnpm recursive run a subcommand too.
+      local -a pa=("$@"); local pi=0 pv=0
+      while [ "$pi" -lt "${#pa[@]}" ]; do
+        case "${pa[pi]}" in
+          -*=*|--) pv=0 ;;
+          -*) pv=1 ;;
+          exec|x|dlx) pm_exec "${pa[@]:pi+1}"; break ;;
+          *)
+            case "$name:${pa[pi]}" in
+              yarn:workspace) pv=1 ;;
+              yarn:workspaces|yarn:foreach|pnpm:recursive|pnpm:multi|pnpm:m) pv=0 ;;
+              *) [ "$pv" -eq 1 ] || break; pv=0 ;;
+            esac ;;
+        esac
+        pi=$((pi+1))
+      done ;;
     eval|source|.|bash|sh|zsh|dash|ksh|mksh|ash|fish|csh|tcsh)
       [ -n "$hs" ] && check_string "$hs"
       [ -n "$HDBODY" ] && check_string "$HDBODY" # shell fed by a heredoc

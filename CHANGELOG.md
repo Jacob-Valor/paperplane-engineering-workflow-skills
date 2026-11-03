@@ -2,6 +2,16 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.20
+
+### Fixed: findings of an independent review
+- **Guard bypasses** (shipping-changes `claude-guard.sh`): options around `exec` no longer switch off the check (`pnpm --filter app exec git push origin main`, `pnpm -C . exec …`, `pnpm exec -- …`, `exec -c '…'`), and `npx`, `bunx`, `yarn workspace … exec`, `yarn workspaces foreach`, `pnpm recursive` and `corepack …` are looked through. At most two guesses per exec keep the check fast (a 28 KB crafted command takes under 1 s, inside the hook timeout); past that, a command naming `git`/`gh` or holding a variable is refused. `push.default=upstream` or `tracking` (via `-c`, `git config` in the same command, or saved with an untracked branch) is refused, and a `git branch -u`/`--set-upstream-to` earlier in the same command counts, since a branch tracking `origin/develop` pushes to `develop` with it. 93 new tests in `test-hooks.sh`.
+- **Secret scan fallback printed the value** when one file changed: `grep` drops the file name for a single file, so `cut -d: -f1,2` kept `line:value`. It now uses `grep -H`.
+- **Release PRs were blocked by the review checklist**: reviewing-prs skips the Mobile row for release and merge-back PRs (hotfix PRs still need it), and the release body says `checked in each merged PR` instead of the untrue `not a mobile change`.
+- **Tag timing** (releasing): the agent computes the tag name when it writes the CTO's tagging commands, after the prod PR merges, not when it opens the uat PR, and those commands re-run `next-tag.sh` first so a name made stale by a hotfix is caught. The tag stays literal in the command, so the `.3` confirmation still happens. The `Rollback:` line names the tag live in prod and says when `--previous` is wrong.
+- **Merge-back drafts**: the workflow skips a target with an open PR from `main` or from `chore/merge-back-<this tag>` (another tag's branch lacks this tag's commits, so it doesn't count), ignores fork PRs whose head is named `main`, and never runs two tags at once in a repo. The manual check in releasing matches. Tests now make `gh pr list` and `gh pr create` fail.
+- **Eval**: `checks.py --labels` crashed on the 79 imported judge-only rows; it now skips rows without a hand label, reads `human.jsonl`, and runs in the offline CI job. The scenario gate fails when more than a third of a scenario's runs are invalid, and with the new `--scenario-floor` (CI: sonnet and opus only) when one scenario with 2 or more valid runs has no pass. `tests/RESULTS.md` notes that a human label disagrees with the judge on a sealed S53 answer.
+
 ## v2026.10.15.19
 
 ### Added: PR automation for product repos (optional, the CTO decides)

@@ -23,7 +23,7 @@ fact from the skill text). SAFE_CHECKS names the safe ones; run.py folds each in
 
 Usage:
   python3 tests/eval/checks.py --self-test            # built-in sample answers
-  python3 tests/eval/checks.py --labels               # compare with tests/eval/labels/labels.jsonl
+  python3 tests/eval/checks.py --labels               # compare with the hand labels in tests/eval/labels/
   python3 tests/eval/checks.py DIR_OR_ANSWER.md ...   # check saved answers (sNN/repN.answer.md)
 """
 
@@ -1250,29 +1250,78 @@ def check_files(paths):
     return 1 if fails else 0
 
 
-def check_labels():
+def hand_labels(label_dir):
+    """Hand label per answer: the newest human_pass in human.jsonl, else label_pass in labels.jsonl.
+
+    label.py imports judge-only rows (judge_pass, no label_pass) into labels.jsonl as the pool to label,
+    so a row may have no hand label yet."""
+    def rows(name):
+        f = label_dir / name
+        return [json.loads(l) for l in f.read_text().splitlines() if l.strip()] if f.exists() else []
+    human = {h["run"]: h["human_pass"] for h in rows("human.jsonl")}
+    out = {}
+    for row in rows("labels.jsonl"):
+        hand = human.get(row["run"], row.get("label_pass"))
+        out[row["run"]] = (row["scenario"], hand)
+    for run, hand in human.items():
+        out.setdefault(run, (Path(run).name.split("-")[0], hand))
+    return out
+
+
+def check_labels(label_dir=Path(__file__).parent / "labels", root=Path(__file__).resolve().parents[2], out=print):
     """Compare the checks with the hand labels: a check failure on a label pass is a false positive."""
-    fp = fn_ = caught = 0
-    lines = (Path(__file__).parent / "labels" / "labels.jsonl").read_text().splitlines()
-    for row in map(json.loads, filter(None, lines)):
-        f = Path(__file__).resolve().parents[2] / row["run"]
-        bad = failed(run_checks(row["scenario"], f.read_text()))
-        if bad and row["label_pass"]:
+    fp = fn_ = caught = skipped = 0
+    labels = hand_labels(label_dir)
+    for run, (scenario, hand) in labels.items():
+        if hand is None:
+            skipped += 1
+            continue
+        bad = failed(run_checks(scenario, (root / run).read_text()))
+        if bad and hand:
             fp += 1
-            print(f"false positive {row['run']}: {', '.join(bad)}")
+            out(f"false positive {run}: {', '.join(bad)}")
         elif bad:
             caught += 1
-        elif not row["label_pass"]:
+        elif not hand:
             fn_ += 1
-    print(f"labels: {len(lines)}, false positives {fp}, label fails caught by a check {caught}, "
-          f"label fails left to the judge {fn_}")
+    out(f"labels: {len(labels) - skipped} hand-labelled ({skipped} unlabelled skipped), false positives {fp}, "
+        f"label fails caught by a check {caught}, label fails left to the judge {fn_}")
     return 1 if fp else 0
+
+
+def labels_self_test():
+    """check_labels skips judge-only rows, prefers a human.jsonl label, and flags a false positive."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "ok.md").write_text("anything")
+        bad_answer = "```bash\ngit push --force origin develop\n```\n"
+        (root / "bad.md").write_text(bad_answer)
+        lines = [{"run": "ok.md", "scenario": "s99", "judge_pass": True},
+                 {"run": "bad.md", "scenario": "s1", "judge_pass": True, "label_pass": False}]
+        (root / "labels.jsonl").write_text("\n".join(map(json.dumps, lines)) + "\n")
+        printed = []
+        rc = check_labels(root, root, printed.append)
+        problems = []
+        if "(1 unlabelled skipped)" not in printed[-1]:
+            problems.append(f"judge-only row not skipped: {printed[-1]}")
+        if rc != 0 or "false positives 0" not in printed[-1]:
+            problems.append(f"label fail with a failing check counted as a false positive: {printed}")
+        (root / "human.jsonl").write_text(json.dumps({"run": "bad.md", "scenario": "s1", "human_pass": True}) + "\n")
+        printed = []
+        rc = check_labels(root, root, printed.append)
+        if rc != 1 or "false positives 1" not in printed[-1]:
+            problems.append(f"human.jsonl label did not override label_pass: {printed}")
+    for p in problems:
+        print(f"labels self-test: {p}")
+    print(f"labels self-test: {3 - len(problems)}/3 ok")
+    return 1 if problems else 0
 
 
 if __name__ == "__main__":
     args = sys.argv[1:]
     if args == ["--self-test"]:
-        sys.exit(self_test())
+        sys.exit(self_test() | labels_self_test())
     if args == ["--labels"]:
         sys.exit(check_labels())
     if args and not args[0].startswith("-"):

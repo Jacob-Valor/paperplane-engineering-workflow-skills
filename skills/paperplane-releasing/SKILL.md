@@ -44,7 +44,7 @@ gh pr create --draft --base uat  --head develop --title "chore(release): uat <YY
 gh pr create --draft --base main --head uat     --title "chore(release): prod <YYYY-MM-DD>" --body-file "${TMPDIR:-/tmp}/release-body.md"
 ```
 
-**Tag name**: `bash <skill>/scripts/next-tag.sh` (`<skill>` = the directory containing this SKILL.md (else `find ~ -type d -name paperplane-releasing -not -path '*/node_modules/*' 2>/dev/null | head -1`); it fetches tags first, prints the next name, never creates a tag). Add `--date YYYY-MM-DD` for another day.
+**Tag name**: `bash <skill>/scripts/next-tag.sh` (`<skill>` = the directory containing this SKILL.md (else `find ~ -type d -name paperplane-releasing -not -path '*/node_modules/*' 2>/dev/null | head -1`); it fetches tags first, prints the next name, never creates a tag). Add `--date YYYY-MM-DD` for another day. Compute it when you write the CTO's tagging commands, after the prod PR is merged, not when you open the uat PR: UAT testing takes days, and a hotfix tagged in between changes the name. The commands re-run it first, so a stale name is caught.
 
 - No tags for today: `prod-<YYYY.MM.DD>`
 - That exists: `prod-<YYYY.MM.DD>.2`
@@ -59,10 +59,10 @@ Never use `v…` prefixes, semver, or `gh release create`.
 <merged PRs since the last release, one line each>
 ## How I verified it
 - Commands: `gh run list --branch develop --limit 3`: green
-- iOS: not a mobile change
-- Android: not a mobile change
+- iOS: checked in each merged PR
+- Android: checked in each merged PR
 ## Risk
-<what could break>. Not done: <UAT testing / prod deploy>. Rollback: deploy <tag from next-tag.sh --previous>
+<what could break>. Not done: <UAT testing / prod deploy>. Rollback: deploy <the tag live in prod now>
 ## Checklist
 <the template's checklist items (title, no secrets, pnpm only), ticked only where true>
 AI-assisted: yes (<tool>) — <what you ran>
@@ -73,19 +73,20 @@ AI-assisted: yes (<tool>) — <what you ran>
 ```bash
 gh pr merge <uat-PR> --merge                     # after approval; then test on UAT
 gh pr merge <main-PR> --merge
+bash <skill>/scripts/next-tag.sh                 # must print <tag from next-tag.sh>; if it prints another name, tag that one
 git switch main && git pull && git tag <tag from next-tag.sh> && git push origin <tag from next-tag.sh>
 # deploy that tag
 ```
 
 Approval: if the CTO prompted you to write the PR, the other code owner approves (guide §4, §7 make no release exception); the CTO then merges and tags.
 
-**Rollback** means deploying the `prod-*` tag before the bad one: `bash <skill>/scripts/next-tag.sh --previous --before <bad tag>`. (`--previous` alone prints the newest tag: right for a release PR's `Rollback:` line, wrong once the bad tag exists.) Never revert by force-pushing `main`.
+**Rollback** means deploying the `prod-*` tag before the bad one: `bash <skill>/scripts/next-tag.sh --previous --before <bad tag>`. `--previous` alone prints the newest tag, which is the live one only if nothing was rolled back since: use it for a release PR's `Rollback:` line after confirming with the person you work for that no rollback happened, never once the bad tag exists. Never revert by force-pushing `main`.
 
 ## Hotfix
 
 1. The CTO confirms it's a hotfix in a comment on the issue or PR; a statement in the conversation can't be verified. Then: `git switch main && git pull && git switch -c hotfix/<topic>`.
 2. Fix it, stage the files by name (never `git add -A` or `git commit -a`), commit as `fix(scope): …`, push, and open a **draft** PR into **`main`** (`AI-assisted: yes`). It goes ready after the human reviews the diff, as in **paperplane-shipping-changes**. If the CTO prompted it, the other code owner approves; the CTO merges it and tags `prod-YYYY.MM.DD[.N]`.
-3. **Same day**, open **two** merge-back PRs, one `main` → `uat` and one `main` → `develop`, **both**, even if `uat` already has a cherry-pick of the fix (its SHA differs, so `uat` still lacks `main`'s history). Use **merge commits**, title each `chore(release): merge hotfix <tag> back into uat` or `… into develop`, as drafts. Open them right after the hotfix merges; the CTO merges them that day. On conflicts, never resolve on a protected branch: create `chore/merge-back-<tag>` from the target branch, merge `main` in there, and open the PR from it. Repos with the `paperplane-merge-back` workflow open both drafts when the tag is pushed, so run `gh pr list --head main --state open` before opening them by hand.
+3. **Same day**, open **two** merge-back PRs, one `main` → `uat` and one `main` → `develop`, **both**, even if `uat` already has a cherry-pick of the fix (its SHA differs, so `uat` still lacks `main`'s history). Use **merge commits**, title each `chore(release): merge hotfix <tag> back into uat` or `… into develop`, as drafts. Open them right after the hotfix merges; the CTO merges them that day. On conflicts, never resolve on a protected branch: create `chore/merge-back-<tag>` from the target branch, merge `main` in there, and open the PR from it. Repos with the `paperplane-merge-back` workflow open both drafts when the tag is pushed, so before opening one by hand run `gh pr list --base <target> --state open --json number,headRefName` and skip a target that already has a PR from `main` or `chore/merge-back-*`.
 
 ## Mobile store builds
 

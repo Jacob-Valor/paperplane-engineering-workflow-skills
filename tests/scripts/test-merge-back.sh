@@ -45,11 +45,16 @@ set -- "${args[@]}"
 arg_after() { local want=$1; shift; while [ $# -gt 1 ]; do [ "$1" = "$want" ] && { echo "$2"; return; }; shift; done; }
 case "$1 $2" in
   "pr list")
-    [ "$(arg_after --head "$@")" = main ] && [ "$(arg_after --state "$@")" = open ] || { echo "fake gh: unexpected list: $*" >&2; exit 99; }
+    # open-<base>: number of our main->base PR; extra-<base>: one "owner head number" line per other open PR.
+    [ -z "$(arg_after --head "$@")" ] && [ "$(arg_after --state "$@")" = open ] || { echo "fake gh: unexpected list: $*" >&2; exit 99; }
+    [ -f "$FAKE_GH/fail-list" ] && { echo "fake gh: list failed" >&2; exit 1; }
     base=$(arg_after --base "$@")
-    if [ -f "$FAKE_GH/open-$base" ]; then json="[{\"number\":$(cat "$FAKE_GH/open-$base")}]"; else json='[]'; fi
+    json=$( { [ -f "$FAKE_GH/open-$base" ] && echo "paperplanehq main $(cat "$FAKE_GH/open-$base")"
+              [ -f "$FAKE_GH/extra-$base" ] && cat "$FAKE_GH/extra-$base"; } \
+      | jq -Rsc '[split("\n")[] | select(length > 0) | split(" ") | {headRepositoryOwner: {login: .[0]}, headRefName: .[1], number: (.[2] | tonumber)}]')
     if [ -n "$jqf" ]; then printf '%s' "$json" | jq -r "$jqf"; else printf '%s\n' "$json"; fi ;;
   "pr create")
+    [ -f "$FAKE_GH/fail-create" ] && { echo "fake gh: create failed" >&2; exit 1; }
     base=$(arg_after --base "$@"); n=$(( $(cat "$FAKE_GH/next" 2>/dev/null || echo 100) + 1 )); echo "$n" > "$FAKE_GH/next"
     echo "$n" > "$FAKE_GH/open-$base"
     arg_after --title "$@" > "$FAKE_GH/title-$base"
@@ -132,6 +137,46 @@ expect "existing uat PR: script succeeds" 0 merge_back prod-2026.10.31
 has    "existing uat PR: skipped" "open PR from main into uat already exists"
 check  "existing uat PR: only develop created" "$(sed -n 's/^pr create --draft --base \([a-z]*\).*/\1/p' "$F/calls")" "develop"
 
+fresh replaced
+commit_on main "fix(pay): hotfix (#45)" 's/line two/line two fixed/'
+publish prod-2026.11.02
+echo "paperplanehq chore/merge-back-prod-2026.11.02 9" > "$F/extra-develop"
+expect "manual merge-back PR: script succeeds" 0 merge_back prod-2026.11.02
+has    "manual merge-back PR: skipped with reason" "open PR from chore/merge-back-prod-2026.11.02 into develop already exists \\(#9\\)"
+check  "manual merge-back PR: only uat created" "$(sed -n 's/^pr create --draft --base \([a-z]*\).*/\1/p' "$F/calls")" "uat"
+
+fresh stale
+commit_on main "fix(pay): hotfix (#47)" 's/line two/line two fixed/'
+publish prod-2026.11.04
+echo "paperplanehq chore/merge-back-prod-2026.11.01 9" > "$F/extra-develop"
+expect "older tag's merge-back PR: script succeeds" 0 merge_back prod-2026.11.04
+lacks  "older tag's merge-back PR: not treated as existing" "already exists"
+check  "older tag's merge-back PR: both drafts created" "$(grep -c '^pr create --draft' "$F/calls")" "2"
+
+fresh fork
+commit_on main "fix(pay): hotfix (#46)" 's/line two/line two fixed/'
+publish prod-2026.11.03
+printf 'mallory main 11\nmallory chore/merge-back-prod-2026.11.03 12\n' > "$F/extra-uat"
+expect "fork PR: script succeeds" 0 merge_back prod-2026.11.03
+lacks  "fork PR: not treated as existing" "already exists"
+check  "fork PR: both drafts created" "$(grep -c '^pr create --draft' "$F/calls")" "2"
+
+fresh createfail
+commit_on main "fix(pay): hotfix (#47)" 's/line two/line two fixed/'
+publish prod-2026.11.04
+touch "$F/fail-create"
+expect "create fails: nonzero exit" 1 merge_back prod-2026.11.04
+has    "create fails: says which" "gh pr create into uat failed"
+has    "create fails: still tries develop" "gh pr create into develop failed"
+
+fresh listfail
+commit_on main "fix(pay): hotfix (#48)" 's/line two/line two fixed/'
+publish prod-2026.11.05
+touch "$F/fail-list"
+expect "list fails: nonzero exit" 1 merge_back prod-2026.11.05
+has    "list fails: says so" "gh pr list for uat failed"
+check  "list fails: no PR created" "$(grep -c '^pr create' "$F/calls")" "0"
+
 fresh conflict
 commit_on develop "feat(pay): rework (#41)" 's/line two/line two reworked/'
 commit_on main "fix(pay): hotfix (#44)" 's/line two/line two fixed/'
@@ -157,6 +202,8 @@ runexpr=$(awk '
 check  "workflow: no \${{ }} in run blocks" "$runexpr" ""
 expect "workflow: tag passed via env" 0 grep -qE '^ +TAG: \$\{\{ inputs\.tag \|\| github\.ref_name \}\}$' "$W"
 expect "workflow: triggers on prod-* tags" 0 grep -qF "tags: ['prod-*']" "$W"
+expect "workflow: one concurrency group per repo" 0 grep -qE '^  group: paperplane-merge-back-\$\{\{ github\.repository \}\}$' "$W"
+expect "workflow: queued runs are not cancelled" 0 grep -qE '^  cancel-in-progress: false$' "$W"
 expect "workflow: least privilege" 0 grep -qE '^  pull-requests: write$' "$W"
 expect "workflow: no credentials left in the clone" 0 grep -qE '^ +persist-credentials: false$' "$W"
 expect "workflow: checks out the default branch, not the tag" 0 grep -qF 'ref: ${{ github.event.repository.default_branch }}' "$W"
