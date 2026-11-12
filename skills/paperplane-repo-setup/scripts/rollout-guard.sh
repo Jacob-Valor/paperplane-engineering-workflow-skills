@@ -33,7 +33,9 @@ n=0
 for repo in "${repos[@]}"; do
   echo "== $repo"
   n=$((n+1)); dir="$tmp/$n"
-  if ! git clone -q --branch develop --depth 1 "https://github.com/$repo.git" "$dir" 2>/dev/null \
+  # GIT_TERMINAL_PROMPT=0: a private repo without stored credentials fails at once (and falls through to gh)
+  # instead of waiting on a username prompt hidden by 2>/dev/null.
+  if ! GIT_TERMINAL_PROMPT=0 git clone -q --branch develop --depth 1 "https://github.com/$repo.git" "$dir" 2>/dev/null \
      && ! gh repo clone "$repo" "$dir" -- -q --branch develop --depth 1 2>/dev/null; then
     echo "cannot clone $repo (develop)"; failed=1; continue
   fi

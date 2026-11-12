@@ -5,7 +5,7 @@
 # pre-push.local and keeps running first. Running it again updates the hook.
 # --block-force-push also blocks non-fast-forward pushes in this clone (for clones only
 #   agents push from; people may rebase and force-push their own branches).
-# --uninstall removes our hook, unsets that option and puts pre-push.local back.
+# --uninstall removes our hook (and then unsets that option) and puts pre-push.local back.
 # --global-hooks-path allows a core.hooksPath outside this repo (a folder other repos
 #   share, so the hook then runs for all of them); without it the install refuses.
 # Exit codes: 0 done · 1 could not install · 2 usage error or not in a git repo
@@ -39,9 +39,9 @@ chained="$hooks/pre-push.local"
 ours() { [ -f "$1" ] && grep -qxF "$marker" "$1"; }
 
 if [ "$uninstall" -eq 1 ]; then
-  git config --unset paperplane.blockForcePush 2>/dev/null || true
   if ours "$hook"; then
     rm -f "$hook" && echo "removed $hook"
+    git config --unset paperplane.blockForcePush 2>/dev/null || true
   elif [ -e "$hook" ]; then
     echo "$hook is not the paperplane hook; left it alone"
   else

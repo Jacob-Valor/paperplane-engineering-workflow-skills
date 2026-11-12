@@ -1,7 +1,7 @@
 # Paper Plane engineering workflow skills
 
 [![validate](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml/badge.svg)](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml)
-Version **v2026.10.15.20**, matching the guide of 2026-10-15 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
+Version **v2026.10.15.21**, matching the guide of 2026-10-15 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
 
 Agent skills that encode the [Paper Plane engineering guide](https://github.com/paperplanehq/paperplane-engineering)
 for every repository in the `paperplanehq` GitHub org. They follow the
@@ -48,7 +48,7 @@ skills/<name>/scripts/*.sh                checks the skill runs with `bash`
   repo-setup/scripts/audit.sh             PASS/FAIL audit of one repo against the standard
 skills/paperplane-repo-setup/assets/.github/  optional PR automation for product repos: `/ready` comment, hotfix merge-back drafts
 skills/paperplane-shipping-changes/hooks/ git pre-push hook and Claude Code guard, with installers
-tests/scenarios/                          agent pressure scenarios S1–S27, S40–S44 and S50–S57 (S50–S57 were the sealed set, run once)
+tests/scenarios/                          agent pressure scenarios S1–S27, S40–S44 and S50–S58 (S50–S57 were the sealed set, run once)
 tests/triggering.md                       do the descriptions pick the right skill?
 tests/README.md                           how to run them and the pass criteria
 tests/RESULTS.md                          before/after scores for every change
