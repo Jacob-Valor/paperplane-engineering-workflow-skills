@@ -1470,6 +1470,14 @@ expect "git hook: uninstall over a foreign hook" 0 in_dir "$ug" bash "$H/install
 check "git hook: uninstall over a foreign hook keeps paperplane.blockForcePush" test "$(git -C "$ug" config --get paperplane.blockForcePush)" = true
 check "git hook: uninstall over a foreign hook keeps the hook" test -s "$ug/.git/hooks/pre-push"
 
+# --- the conflict helper the skill tells agents to run passes the guard. It never commits or pushes, so there is
+# nothing for the guard to block on develop; the helper refuses there itself (test-resolve-conflicts.sh).
+rc_script="$here/skills/paperplane-shipping-changes/scripts/resolve-conflicts.sh"
+for c in "bash $rc_script" "bash $rc_script --check"; do
+  expect "guard allows the conflict helper on a feature branch: ${c##*/}" 0 guard "$c" "$feat_wt"
+done
+expect "guard still blocks the push the helper prints, if aimed at develop" 2 guard "git push origin develop" "$feat_wt"
+
 # @@NEW-TESTS@@
 
 echo "$pass passed, $fail failed"
