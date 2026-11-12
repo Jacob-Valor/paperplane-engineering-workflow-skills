@@ -44,6 +44,15 @@
 #    from a subdirectory (../.git), symlinks in a Bash path (the Edit/Write check does
 #    resolve the directory), and a hook-skipping variable set some other way (set -a;
 #    a script's own export);
+#  - a command the guard does not know is checked from its first later word that is
+#    exactly git or gh (mise exec -- git push, uv run git push) or a word starting with
+#    "git "/"gh " (hyperfine 'git push ...'); a tool that builds the git command itself
+#    (make push, its own config) passes;
+#  - git add/commit pathspecs reaching the folder git runs in or above it are refused, and
+#    so is one ending in a $VAR it cannot read; "$ROOT/app" (a variable, then a literal
+#    folder) that happens to name the repo root passes;
+#  - the guard's installers (install-*-hook.sh beside this file) run unread and --uninstall
+#    is refused; a vendored copy (.claude/hooks) reads them like any script and refuses them;
 #  - size: over 128KB, over 6000 statements or $( ) nested over 64 deep the guard
 #    stops parsing; it then refuses ("command too large to check; split it") when
 #    the text names git, gh or a protected path, and lets it run otherwise;
@@ -161,7 +170,7 @@ R_STAGEALL="stage files by name (git add path/to/file); git add -A/--all/. and g
 R_MERGE="agents never merge PRs or turn on auto-merge; a human merges"
 R_APPROVE="agents never approve PRs; a human reviewer approves"
 R_SETTINGS="repo settings belong to the CTO; do not change them with gh repo edit/delete/archive/rename, gh secret/variable, gh api on the repo, branch protection, rulesets, hooks, collaborators, environments or keys"
-R_REFAPI="creating, moving or deleting develop/uat/main or release refs, tags and releases through the API skips the push checks; a human does that"
+R_REFAPI="creating, moving, committing to or deleting develop/uat/main or release refs, tags and releases through the API skips the push checks; a human does that"
 R_CLEANX="git clean -x/-X also deletes ignored files such as .claude/settings.local.json (this guard's own settings); use git clean -fd, or -n to preview"
 R_PNPM="this repo uses pnpm (pnpm-lock.yaml); use pnpm install, pnpm add or pnpm dlx instead"
 R_GITCONFIG="core.hooksPath, alias.* (\"!\" shell aliases above all), paperplane.* and GIT_CONFIG_*/GIT_DIR/GIT_EXEC_PATH skip the repo's hooks or hide the real command; run plain git"
@@ -365,7 +374,8 @@ check_refspec() {
   case "$dst" in HEAD|@) cur_branch; dst=$CB; [ "$dst" = '?' ] && { block "$R_PROTECTED"; return; } ;; esac # pushes the branch you are on
   case "$dst" in refs/heads/*) dst=${dst#refs/heads/} ;; heads/*) dst=${dst#heads/} ;; esac
   case "$dst" in develop|uat|main) block "$R_PROTECTED"; return ;; esac
-  case "${dst#refs/tags/}" in prod-[0-9]*|uat-[0-9]*) block "$R_TAGS" ;; esac
+  dst=${dst#refs/}; dst=${dst#tags/} # refs/tags/prod-1 and tags/prod-1 both push the tag
+  case "$dst" in prod-[0-9]*|uat-[0-9]*) block "$R_TAGS" ;; esac
 }
 
 check_bare_push() { # check_bare_push <remote or empty>: what a push with no refspec reaches
@@ -452,11 +462,12 @@ check_push() {
 }
 
 check_commit() {
-  local a f j
+  local a f j dd=0
   while [ $# -gt 0 ]; do
     a=$1; shift
+    if [ "$dd" -eq 1 ]; then stage_all_spec "$a" && { block "$R_STAGEALL"; return; }; continue; fi
     case "$a" in
-      --) return ;;
+      --) dd=1 ;;
       --all) block "$R_STAGEALL"; return ;;
       --no-v|--no-ve|--no-ver|--no-veri|--no-verif|--no-verify|--no-verify=*) block "$R_NOVERIFY"; return ;;
       --message|--file|--author|--date|--template|--reuse-message|--reedit-message|--fixup|--squash|--trailer|--cleanup)
@@ -473,12 +484,38 @@ check_commit() {
           esac
           j=$((j+1))
         done ;;
+      *) stage_all_spec "$a" && { block "$R_STAGEALL"; return; } ;; # git commit . is git commit -a
     esac
   done
 }
 
+stage_all_spec() { # stage_all_spec <pathspec>: 0 when it reaches the folder git runs in (gdir) or one above it
+  local p=$1 last
+  case "$p" in
+    ':/'*|':(top)'*) # relative to the repo root: only the root itself (or a glob over it) is everything
+      p=${p#:/}; p=${p#':(top)'}
+      case "$p" in *[!*./]*) return 1 ;; esac
+      return 0 ;;
+    ':!'*|':^'*|':(exclude)'*) return 1 ;; # an exclusion adds nothing
+    ':('*')'*) p=${p#*)} ;; # :(glob)** is ** with glob rules
+  esac
+  last=${p##*/}
+  case "$p" in
+    *"$SOH"*|*"$STX"*|*"$ETX"*) # a value the guard cannot read: "$DIR" or src/$X can be the repo root
+      case "$last" in ''|.|..|"\$$SOH"|"\$$STX"|"\$$ETX") return 0 ;; esac
+      return 1 ;;
+  esac
+  case "$last" in *'*'*) case "$last" in *[!*.]*) ;; *) p=${p%"$last"} ;; esac ;; esac # ** or src/* : the folder it globs over
+  case "$p" in '~') p=${HOME:-'~'} ;; \~/*) [ -n "${HOME:-}" ] && p=$HOME/${p#'~/'} ;; esac
+  case "$p" in /*) ;; *) p=$gdir/$p ;; esac
+  norm_path "$gdir"; last=${NP%/}/
+  norm_path "$p"
+  case "$last" in "${NP%/}/"*) return 0 ;; esac
+  return 1
+}
+
 check_add() {
-  local a p dashdash=0
+  local a dashdash=0
   for a in "$@"; do
     if [ "$dashdash" -eq 0 ]; then
       case "$a" in
@@ -488,10 +525,14 @@ check_add() {
         -?*) case "$a" in *A*) block "$R_STAGEALL"; return ;; esac; continue ;;
       esac
     fi
-    p=${a#:/}; p=${p#':(top)'}
-    while :; do case "$p" in ./*) p=${p#./} ;; /*) p=${p#/} ;; *) break ;; esac; done
-    case "$p" in ''|.|'*'|'.*') block "$R_STAGEALL"; return ;; esac
+    stage_all_spec "$a" && { block "$R_STAGEALL"; return; } # ., *, '**', ../.., src/.., "$PWD", the repo root
   done
+}
+
+check_remote() { # git remote add --mirror[=push]: every later push mirrors all refs
+  local a
+  [ "${1:-}" = add ] || return 0
+  for a in "$@"; do case "$a" in --mirror|--mirror=push) block "$R_ALLBRANCHES"; return ;; esac; done
 }
 
 git_builtin() { # commands git runs itself; an alias of the same name is never used
@@ -574,6 +615,7 @@ check_git() {
     merge|cherry-pick|am) check_noverify "$@" ;;
     send-pack) block "$R_PLUMBING" ;;
     config) check_config "$@" ;;
+    remote) check_remote "$@" ;;
   esac
 }
 
@@ -689,7 +731,7 @@ check_clean() { # dry runs are fine; -x/-X deletes ignored files, settings.local
   done
   [ "$reach" -eq 1 ] || return 0
   fork_budget
-  if [ -n "$(gitc ls-files --others --exclude-standard -- .claude/settings.json .claude/settings.local.json .claude/hooks/paperplane-guard.sh .omp/hooks/pre/paperplane-guard.ts .husky/pre-push 2>/dev/null)" ]; then
+  if [ -n "$(gitc ls-files --others --exclude-standard -- .claude/settings.json .claude/settings.local.json .claude/hooks/paperplane-guard.sh .omp/hooks/pre/paperplane-guard.ts ':(glob)**/pre-push' 2>/dev/null)" ]; then
     block "$R_SELF"
   fi
   return 0
@@ -701,18 +743,35 @@ is_protected_branch() {
 }
 
 check_branch() { # git branch -f/-m/-M/-d/-D/-c/-C touching develop/uat/main
-  local a mut=0
+  local a del=0 mv=0 cp=0 force=0 skip=0
+  local -a nm=()
   for a in "$@"; do
+    [ "$skip" -eq 1 ] && { skip=0; continue; }
     case "$a" in
-      --force|--move|--delete|--copy) mut=1 ;;
-      --*) ;;
-      -?*) case "$a" in *[fMmDdCc]*) mut=1 ;; esac ;;
+      --delete) del=1 ;;
+      --move) mv=1 ;;
+      --copy) cp=1 ;;
+      --force) force=1 ;;
+      -u|--set-upstream-to) skip=1 ;;
+      --*|-u?*) ;;
+      -?*)
+        case "$a" in *[dD]*) del=1 ;; esac
+        case "$a" in *[mM]*) mv=1 ;; esac
+        case "$a" in *[cC]*) cp=1 ;; esac
+        case "$a" in *f*) force=1 ;; esac ;;
+      *) nm+=("$a") ;;
     esac
   done
-  [ "$mut" -eq 1 ] || return 0
-  for a in "$@"; do
-    case "$a" in -*) ;; *) is_protected_branch "$a" && { block "$R_REFWRITE"; return; } ;; esac
-  done
+  [ "${#nm[@]}" -gt 0 ] || return 0
+  if [ "$del" -eq 1 ] || [ "$mv" -eq 1 ]; then # -d deletes every name; -m main x renames main away
+    for a in "${nm[@]}"; do is_protected_branch "$a" && { block "$R_REFWRITE"; return; }; done
+  elif [ "$cp" -eq 1 ]; then # -c [<old>] <new>: only the copy is written
+    if [ "${#nm[@]}" -eq 1 ]; then a=${nm[0]}; else a=${nm[1]}; fi
+    is_protected_branch "$a" && block "$R_REFWRITE"
+  elif [ "$force" -eq 1 ]; then # -f <name> [<start>]: only <name> moves
+    is_protected_branch "${nm[0]}" && block "$R_REFWRITE"
+  fi
+  return 0
 }
 
 check_updateref() { # git update-ref [-d] <ref> ...: the first non-option word is the ref
@@ -740,6 +799,7 @@ hooky_kv() { # hooky_kv <key> <value>: true for settings that skip the hook or a
     core.hookspath*|include.path|includeif.*.path) r=0 ;;
     push.default) case "$v" in matching*|upstream*|tracking*|'?unknown') r=0 ;; esac ;; # upstream: a branch made from origin/develop pushes to develop
     remote.*.push) r=0 ;;
+    remote.*.mirror|push.followtags) case "$v" in ''|true|yes|on|1|'?unknown') r=0 ;; esac ;; # push --mirror / --follow-tags
     branch.*.merge) is_protected_branch "$v" && r=0 ;;
     alias.*) case "$v" in *push*|*merge*|*verify*|*hookspath*|'?unknown') r=0 ;; esac
       case "${v#"${v%%[![:space:]]*}"}" in '!'*) r=0 ;; esac ;; # "!cmd" runs a shell command the guard never sees
@@ -819,15 +879,20 @@ check_gh() {
     "alias set"|"alias import"|"extension install"|"extension exec"|"ext install"|"ext exec") block "$R_GHEXT" ;;
     "release create"|"release delete"|"release edit"|"release delete-asset"|"release upload") block "$R_TAGS" ;;
     "pr review")
-      for a in "$@"; do
+      while [ $# -gt 0 ]; do
+        a=$1; shift
         case "$a" in
           --approve|--approve=*) block "$R_APPROVE"; return ;;
+          -b|--body|-F|--body-file|-R|--repo) [ $# -gt 0 ] && shift ;; # --body "-a typo" is text
           --*) ;;
-          -?*) # bundled short flags (-ab): -a approves unless it is the value of -b/-F
+          -?*) # bundled short flags (-ab): -a approves unless it is the value of -b/-F/-R
             bundle=${a#-}; j=0
             while [ "$j" -lt "${#bundle}" ]; do
               ch=${bundle:j:1}
-              case "$ch" in a) block "$R_APPROVE"; return ;; b|F|R) break ;; esac
+              case "$ch" in
+                a) block "$R_APPROVE"; return ;;
+                b|F|R) [ $((j+1)) -eq "${#bundle}" ] && [ $# -gt 0 ] && shift; break ;; # -cb "-a x": the next word is the value
+              esac
               j=$((j+1))
             done ;;
         esac
@@ -836,17 +901,23 @@ check_gh() {
       # Merges and approvals go through POST (REST or graphql), so match the
       # endpoint or mutation; a REST merge endpoint without fields or -X is a GET.
       local method="" fields=0 merge_ep=0 approve=0 review=0 hidden=0 hevent=0 graphql=0 inp=0 ep="" valskip=0 isval n
+      local fnext=0 fv cbr="" cbset=0
       while [ $# -gt 0 ]; do
         a=$1; shift
         isval=$valskip; valskip=0
+        fv=""; [ "$fnext" -eq 1 ] && fv=$a; fnext=0
         case "$a" in
           -X|--method) method=${1:-}; [ $# -gt 0 ] && shift ;;
           --method=*) method=${a#--method=} ;;
           -X?*) method=${a#-X} ;;
-          -f|-F|--field|--raw-field|--input) fields=1; valskip=1 ;;
-          -f?*|-F?*|--field=*|--raw-field=*|--input=*) fields=1 ;;
+          -f|-F|--field|--raw-field) fields=1; valskip=1; fnext=1 ;;
+          --input) fields=1; valskip=1 ;;
+          -f?*|-F?*) fields=1; fv=${a#-?} ;;
+          --field=*|--raw-field=*) fields=1; fv=${a#*=} ;;
+          --input=*) fields=1 ;;
           -H|--header|-q|--jq|-t|--template|--cache|--hostname|-p|--preview) valskip=1 ;;
         esac
+        case "$fv" in branch=*) cbset=1; cbr=${fv#branch=} ;; esac # the contents API's target branch
         n=${a%%\?*} # repos/o/r/pulls/1/merge?merge_method=squash and .../merge/ are the merge endpoint
         while [ "${n%/}" != "$n" ]; do n=${n%/}; done
         if [ "$isval" -eq 0 ]; then
@@ -857,7 +928,7 @@ check_gh() {
         case "$a" in *mergePullRequest*|*[Aa]utoMerge*|*mergeBranch*) block "$R_MERGE"; return ;; esac
         case "$a" in
           *[Uu]pdateRepository*|*[Dd]eleteRepository*|*[Aa]rchiveRepository*|*[Uu]narchiveRepository*|*BranchProtectionRule*|*[Rr]uleset*|*[Aa]ddCollaborator*|*[Cc]reateEnvironment*) block "$R_SETTINGS"; return ;;
-          *[Cc]reateRef*|*[Uu]pdateRef*|*[Dd]eleteRef*|*[Cc]reateRelease*|*[Uu]pdateRelease*|*[Dd]eleteRelease*|*[Cc]reateTag*) block "$R_REFAPI"; return ;;
+          *[Cc]reateRef*|*[Uu]pdateRef*|*[Dd]eleteRef*|*[Cc]reateRelease*|*[Uu]pdateRelease*|*[Dd]eleteRelease*|*[Cc]reateTag*|*[Cc]reateCommitOnBranch*) block "$R_REFAPI"; return ;;
         esac
         case "$n" in */merge|*/merges) merge_ep=1 ;; esac
         case "$a" in *APPROVE*) approve=1 ;; esac
@@ -868,6 +939,15 @@ check_gh() {
       [ "$review" -eq 1 ] && { [ "$inp" -eq 1 ] || [ "$hevent" -eq 1 ]; } && [ "$fields" -eq 1 ] && { block "$R_APPROVE"; return; }
       [ "$merge_ep" -eq 1 ] && [ "$fields" -eq 1 ] && { block "$R_MERGE"; return; }
       [ "$approve" -eq 1 ] && [ "$review" -eq 1 ] && { block "$R_APPROVE"; return; }
+      if [ "$fields" -eq 1 ]; then # PUT/DELETE repos/o/r/contents/<path> commits to branch= (no branch: the default branch)
+        n=${ep#https://api.github.com/}; n=${n#/}
+        case "$n" in
+          repos/*/*/contents/*)
+            [ "$inp" -eq 1 ] || [ "$cbset" -eq 0 ] && { block "$R_REFAPI"; return; }
+            case "$cbr" in ''|@*|*"$SOH"*|*"$STX"*|*"$ETX"*) block "$R_REFAPI"; return ;; esac
+            is_protected_branch "$cbr" && { block "$R_REFAPI"; return; } ;;
+        esac
+      fi
       api_class "$ep" "$fields" ;;
   esac
 }
@@ -925,8 +1005,11 @@ check_npm() {
     case "$a" in
       --prefix|-w|--workspace|--registry|--userconfig|--cache|--loglevel|--tag|--otp|--scope) [ $# -gt 0 ] && shift ;;
       -*) ;;
-      install|i|in|ins|inst|insta|instal|isntall|ci|add|uninstall|un|unlink|remove|rm|r|update|up|upgrade|udpate|exec|x|it|cit|clean-install|ic|install-test|install-ci-test|link|ln|dedupe|ddp|prune) block "$R_PNPM"; return ;;
-      run|run-script|rum|urn|test|t|tst|start|stop|restart|view|v|show|info|ls|list|ll|la|root|bin|config|c|pack|publish|version|help|audit|outdated) return ;;
+      install|i|in|ins|inst|insta|instal|isntall|ci|add|uninstall|un|unlink|remove|rm|r|update|up|upgrade|udpate|exec|x|it|cit|sit|clean-install|ic|install-clean|isntall-clean|install-test|install-ci-test|clean-install-test|link|ln|dedupe|ddp|prune) block "$R_PNPM"; return ;;
+      audit) # npm audit fix rewrites package-lock.json and node_modules
+        for a in "$@"; do case "$a" in -*) ;; fix) block "$R_PNPM"; return ;; *) return ;; esac; done
+        return ;;
+      run|run-script|rum|urn|test|t|tst|start|stop|restart|view|v|show|info|ls|list|ll|la|root|bin|config|c|pack|publish|version|help|outdated) return ;;
     esac
   done
 }
@@ -954,7 +1037,7 @@ check_bun() {
     case "$a" in
       --cwd|--config|-c) [ $# -gt 0 ] && shift ;;
       -*) ;;
-      install|i|add|a|remove|rm|update|x|link|unlink) block "$R_PNPM"; return ;;
+      install|i|ci|add|a|remove|rm|update|x|link|unlink) block "$R_PNPM"; return ;;
       *) return ;;
     esac
   done
@@ -991,7 +1074,7 @@ prot_lit() { # prot_lit <path> [dir]: a guard/settings/hook file (or, with dir=1
     .omp/hooks/pre/paperplane-guard.sh|*/.omp/hooks/pre/paperplane-guard.sh) return 0 ;;
     */.omp/agent/hooks/pre/paperplane-guard.ts|*/.omp/agent/hooks/pre/paperplane-guard.sh) return 0 ;;
     .git/config|*/.git/config|.git/config.worktree|*/.git/config.worktree) return 0 ;;
-    .git/hooks/pre-push|*/.git/hooks/pre-push|.husky/pre-push|*/.husky/pre-push) return 0 ;;
+    pre-push|*/pre-push) return 0 ;; # .git/hooks, .husky and a core.hooksPath folder (.githooks/pre-push)
   esac
   if [ "${2:-0}" = 1 ]; then
     case "$p" in
@@ -1014,6 +1097,7 @@ is_prot() { # is_prot <path> [dir]: does this argument name (or glob to) a prote
     *..*) norm_path "$p"; prot_lit "$NP" "${2:-0}" && return 0 ;;
   esac
   [ "${2:-0}" = 1 ] && case "$abs" in "$edir/.git"|"$edir/.git/") return 0 ;; esac # rm -rf .git removes every hook and the repo
+  [ "${2:-0}" = 1 ] && [ -f "${abs%/}/pre-push" ] && return 0 # rm -rf .githooks: a hooks folder holding a pre-push hook
   case "$p" in
     *'*'*|*'?'*|*'['*|*'{'*)
       while IFS= read -r m; do
@@ -1165,6 +1249,36 @@ dyn_cmd() { # dyn_cmd <args after a command word the guard cannot read>: 0 when 
   return 1
 }
 
+own_installer() { # own_installer <path>: install-*-hook.sh in the folder this guard runs from (the agent cannot write there)
+  local d=. b=$1
+  case "$1" in *"$SOH"*|*"$STX"*|*"$ETX"*) return 1 ;; */*) d=${1%/*}; b=${1##*/} ;; esac
+  case "$b" in install-git-hook.sh|install-claude-hook.sh|install-omp-hook.sh) ;; *) return 1 ;; esac
+  [ -f "$self_dir/$b" ] || return 1
+  resolve_dir "${d:-/}" || return 1
+  d=$RD
+  resolve_dir "$self_dir" && [ "$d" = "$RD" ]
+}
+installer_run() { # installer_run <args>: installing is what SKILL.md asks for; --uninstall removes the guard
+  local a
+  for a in "$@"; do
+    case "$a" in --uninstall|*"$SOH"*|*"$STX"*|*"$ETX"*) block "$R_SELF"; return ;; esac
+  done
+}
+later_git() { # later_git <args of a command the guard does not know>: mise exec -- git push ..., hyperfine 'git push ...'
+  local i=0 a t
+  for a in "$@"; do
+    i=$((i+1))
+    # A shell or env after the wrapper (mise exec -- bash -c '...') is checked like a command of its own.
+    case "$a" in git|gh|/*/git|/*/gh|bash|sh|zsh|dash|ksh|env|sudo|*/bash|*/sh|*/zsh|*/env) check_words "${@:i}"; return ;; esac
+    case "$a" in
+      *[[:space:]]*)
+        t=${a#"${a%%[![:space:]]*}"}; t=${t%%[[:space:]]*}
+        # Exactly git/gh or a path to it: a sed or awk pattern such as '/git commit -a/p' is text, not a command.
+        case "$t" in git|gh|/*/git|/*/gh) check_string "$a"; [ -n "$reason" ] && return ;; esac ;;
+    esac
+  done
+}
+
 check_words() {
   # Drop redirections, leading VAR=value assignments and wrapper commands.
   local -a w=()
@@ -1293,7 +1407,10 @@ check_words() {
   if [ "$PIPE_PROT" -eq 1 ]; then # find printed protected files and this command eats the list
     case "$name" in rm|mv|shred|unlink|truncate|tee|sponge|dd|cp|install) block "$R_SELF" ;; esac
   fi
-  case "$cmd0" in */*) check_script auto "$cmd0" ;; esac
+  case "$cmd0" in */*)
+    if own_installer "$cmd0"; then installer_run "$@"; return 0; fi
+    check_script auto "$cmd0" ;;
+  esac
   XARGS=$viax; SEG_GD=$sgd
   [ "$skipenv" -eq 1 ] && hook_tool "$name" && block "$R_SKIPHOOK"
   case "$name" in
@@ -1358,13 +1475,18 @@ check_words() {
             fi
             return
           fi
-          [ $# -gt 0 ] && [ "$sflag" -eq 0 ] && { check_script shell "$1"; return; }
+          if [ $# -gt 0 ] && [ "$sflag" -eq 0 ]; then
+            if own_installer "$1"; then shift; installer_run "$@"; else check_script shell "$1"; fi
+            return
+          fi
           # no script and no -c: the shell reads its commands from stdin
           [ "$PIPE_IN" -eq 1 ] && { block "$R_HIDDEN"; return; }
           [ -n "$PIPE_TEXT" ] && check_string "$PIPE_TEXT"
           [ -n "$stdinf" ] && check_script shell "$stdinf"
           [ -n "$PIPE_FILE" ] && check_script shell "$PIPE_FILE" ;;
       esac ;;
+    echo|printf|grep|egrep|fgrep|rg|ag|ack|man|which|whereis|type|whatis|apropos|tldr|info|help|test|'['|'[['|hash|alias|complete) ;; # text about git
+    *) later_git "$@" ;; # a wrapper it does not know: mise exec -- git push, uv run git push
   esac
   case "$name" in npm|npx|yarn|bun|bunx) ;; *) return 0 ;; esac # only these can break the pnpm rule
   pnpm_at "$edir" || return 0

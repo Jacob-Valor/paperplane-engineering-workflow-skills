@@ -94,6 +94,15 @@ if command -v gitleaks >/dev/null 2>&1; then
   git add k.ts; git commit -qm leak; git switch -q feature/x
   expect "git hook: secret on another branch blocked" 1 git push -q origin fix/leak
 fi
+git switch -qc fix/env-other; echo X=1 > .env.local; git add -f .env.local; git commit -qm env; envsha=$(git rev-parse HEAD)
+git switch -q feature/x
+expect "git hook: .env on a branch you are not on blocked" 1 git push -q origin fix/env-other
+git tag build-env "$envsha"
+expect "git hook: tag carrying an unpushed .env commit blocked" 1 git push -q origin build-env
+expect "git hook: custom ref carrying an unpushed .env commit blocked" 1 git push -q origin "$envsha:refs/wip/x"
+git tag -d build-env >/dev/null
+git switch -qc fix/tagme; echo t > t; git add t; git commit -qm "fix(t): t"; git tag build-new; git switch -q feature/x
+expect "git hook: tag on a clean unpushed commit allowed" 0 git push -q origin build-new
 
 # Chaining a foreign hook
 expect "git hook: uninstall" 0 bash "$H/install-git-hook.sh" --uninstall
@@ -1373,6 +1382,93 @@ timed "perf: 300 bare git pushes (cached lookups)" 10 0 "$(printf 'git push orig
 timed "perf: 300 git push with a dynamic ref (cached branch)" 10 0 "$(printf 'git push origin "$B"; %.0s' $(seq 300))" "$feat_wt"
 timed "perf: 450 git checkouts hit the fork budget and are refused as too big" 20 2 "$(printf 'git checkout feature/a; %.0s' $(seq 450))" "$p2r"
 timed "perf: 450 cd commands are cheap (no forks)" 10 0 "$(printf 'cd /tmp; %.0s' $(seq 450))" "$work"
+
+# ================================================================ round 3: review findings 3-11
+# --- the guard's own installers run unread (SKILL.md tells agents to run them); --uninstall is refused
+for c in "bash $H/install-git-hook.sh" "bash $H/install-claude-hook.sh --commit" "bash $H/install-omp-hook.sh" "$H/install-git-hook.sh --block-force-push" "cd $H && bash install-git-hook.sh"; do
+  expect "guard allows the guard's installer: $c" 0 guard "$c" "$feat_wt"
+done
+for c in "bash $H/install-omp-hook.sh --uninstall" "bash $H/install-git-hook.sh --uninstall" "bash $H/install-claude-hook.sh --user --uninstall" "$H/install-claude-hook.sh --uninstall" "bash $H/install-git-hook.sh \$ARG"; do
+  expect "guard blocks the guard's uninstaller: $c" 2 guard "$c" "$feat_wt"
+done
+fakei="$work/fake-installer"; mkdir -p "$fakei"; printf '#!/bin/sh\ngit push origin main\n' > "$fakei/install-git-hook.sh"
+expect "guard reads an install-git-hook.sh outside its own folder" 2 guard "bash $fakei/install-git-hook.sh" "$feat_wt"
+
+# --- a pre-push hook under core.hooksPath is protected like .git/hooks/pre-push
+mkdir -p "$pr/.githooks"; : > "$pr/.githooks/pre-push"
+for t in Edit Write; do
+  for f in .githooks/pre-push "$pr/.githooks/pre-push" pre-push; do expect "guard blocks $t on $f" 2 tguard "$t" file_path "$f" "$pr"; done
+done
+expect "guard allows Write of .githooks/pre-commit" 0 tguard Write file_path .githooks/pre-commit "$pr"
+for c in 'rm .githooks/pre-push' 'printf "exit 0\n" > .githooks/pre-push' 'rm -rf .githooks' 'chmod -x .githooks/pre-push' 'mv .githooks/pre-push /tmp/x'; do
+  expect "guard blocks (core.hooksPath hook): $c" 2 guard "$c" "$pr"
+done
+for c in 'cat .githooks/pre-push' 'chmod +x .githooks/pre-push' 'rm -rf src'; do expect "guard allows (core.hooksPath hook): $c" 0 guard "$c" "$pr"; done
+gh_repo="$work/githooks-repo"; git init -q "$gh_repo"; mkdir -p "$gh_repo/.githooks"; : > "$gh_repo/.githooks/pre-push"
+expect "guard blocks git clean -fd over an untracked .githooks/pre-push" 2 guard 'git clean -fd' "$gh_repo"
+expect "guard allows git clean -n with an untracked .githooks/pre-push" 0 guard 'git clean -n' "$gh_repo"
+
+# --- wrappers the guard does not know: a later word that is git or gh is checked from there
+wrap_blocked=(
+  'mise exec -- git push origin main' 'uv run git push origin main' 'direnv exec . git push origin main' 'op run -- git push origin main'
+  'dotenv -- git push origin main' 'poetry run git push origin main' 'bundle exec git push origin main' 'pipenv run git push origin main'
+  'nix develop -c git push origin main' 'aws-vault exec prof -- git push origin main' 'asdf exec git push origin main' 'strace -f git push origin main'
+  'xcrun git push origin main' 'hyperfine "git push origin main"' 'npx --yes dotenv-cli -- git push origin main' 'mise exec -- gh pr merge 5'
+  'uv run /usr/bin/git push --force' "mise exec -- bash -c 'cd /tmp && git push origin main'"
+  "mise exec -- bash -c 'set -e; git push origin main'" "direnv exec . sh -c 'true && git push origin develop'"
+)
+for c in "${wrap_blocked[@]}"; do expect "guard blocks (unknown wrapper): $c" 2 guard "$c" "$feat_wt"; done
+wrap_allowed=('mise exec -- git status' 'uv run pytest' 'echo git push origin main' 'grep -r git push' 'which git' 'brew install git gh' 'uv run git push origin feature/z' 'hyperfine "git status"'
+  "sed -n '/git commit -a/p' history.log" "awk '/git add -A/' history.log" "awk '/gh pr merge --auto/' notes.md" "mise exec -- bash -c 'pnpm test'")
+for c in "${wrap_allowed[@]}"; do expect "guard allows (unknown wrapper): $c" 0 guard "$c" "$feat_wt"; done
+
+# --- config equivalents of --mirror and --follow-tags; tags/<name> refspecs
+for c in 'git -c remote.origin.mirror=true push origin' 'git config remote.origin.mirror true && git push origin' 'git -c push.followTags=true push origin feature/x' \
+         'git config push.followTags true' 'git remote add --mirror o2 https://example.com/r.git' 'git remote add --mirror=push o2 url' 'git push origin tags/prod-2026.10.13' 'git push origin tags/uat-2026.10.13'; do
+  expect "guard blocks: $c" 2 guard "$c" "$feat_wt"
+done
+for c in 'git config push.followTags false' 'git remote add o2 https://example.com/r.git' 'git remote add --mirror=fetch o2 url' 'git push origin tags/build-1'; do
+  expect "guard allows: $c" 0 guard "$c" "$feat_wt"
+done
+
+# --- pathspecs that reach the folder git runs in or above it stage everything
+mkdir -p "$feat_wt/src/a"
+for c in 'git add ../..' 'git add ..' 'git add src/..' 'git add "$PWD"' "git add $feat_wt" "git add '**'" "git add ':(glob)**'" 'git add "$X"' 'git add -- ../' 'git commit . -m x' 'git commit -m x -- .' 'git commit -m x ..'; do
+  expect "guard blocks (stage everything): $c" 2 guard "$c" "$feat_wt/src/a"
+done
+for c in 'git add x.ts' 'git add ../b.ts' 'git add "$PWD/x.ts"' 'git add src/*' 'git add ./b' 'git commit -m x b.ts' 'git commit -m . b.ts' 'git add -u' "git add ':!dist'"; do
+  expect "guard allows (named paths): $c" 0 guard "$c" "$feat_wt/src/a"
+done
+expect "guard blocks git -C .. add ." 2 guard 'git -C .. add .' "$feat_wt/src/a"
+
+# --- GitHub API commits to a branch
+for c in 'gh api -X PUT repos/o/r/contents/a.txt -f branch=main -f message=m -f content=YQ==' 'gh api -X PUT repos/o/r/contents/a.txt -f message=m -f content=YQ==' \
+         'gh api -X DELETE /repos/o/r/contents/a.txt -f sha=abc -f message=m' 'gh api -X PUT repos/o/r/contents/a.txt -F branch=@b.txt' 'gh api -X PUT repos/o/r/contents/a.txt --input body.json' \
+         'gh api -X PUT repos/o/r/contents/a.txt -fbranch=develop' "gh api graphql -f query='mutation{createCommitOnBranch(input:{branch:{branchName:\"main\"}}){commit{oid}}}'"; do
+  expect "guard blocks (API commit): $c" 2 guard "$c" "$R"
+done
+for c in 'gh api -X PUT repos/o/r/contents/a.txt -f branch=feature/x -f message=m -f content=YQ==' 'gh api repos/o/r/contents/a.txt' 'gh api -X GET repos/o/r/contents/a.txt -f ref=main'; do
+  expect "guard allows (API read or feature branch): $c" 0 guard "$c" "$R"
+done
+
+# --- npm and bun install aliases in a pnpm repo
+for c in 'npm install-clean' 'npm isntall-clean' 'npm sit' 'npm clean-install-test' 'npm audit fix' 'npm audit --json fix' 'bun ci'; do expect "guard blocks in pnpm repo: $c" 2 guard "$c" "$work/pnpm-repo"; done
+for c in 'npm audit' 'npm audit --json' 'npm audit signatures'; do expect "guard allows in pnpm repo: $c" 0 guard "$c" "$work/pnpm-repo"; done
+
+# --- false positives: only the branch git branch writes counts; review bodies are text
+for c in 'git branch -f feature/y main' 'git branch -c main backup/main' 'git branch -C develop backup/develop' 'git branch -f feature/q' 'git branch -u origin/main' 'git branch -uorigin/main' \
+         'gh pr review 5 --comment --body "-all tests pass"' 'gh pr review 5 -c -b "-a typo here"' 'gh pr review 5 -cb "-a typo"' 'gh pr review 5 --request-changes -F notes.md -R o/r'; do
+  expect "guard allows (false positive): $c" 0 guard "$c" "$R"
+done
+for c in 'git branch -c main' 'git branch -c x main' 'git branch -m main old' 'git branch -f main feature/y' 'gh pr review 5 -c -b x -a' 'gh pr review 5 --body x --approve'; do
+  expect "guard blocks: $c" 2 guard "$c" "$R"
+done
+
+# --- install-git-hook.sh --uninstall leaves paperplane.blockForcePush alone when the hook is not ours
+ug="$work/uninstall-foreign"; git init -q "$ug"; printf '#!/bin/sh\nexit 0\n' > "$ug/.git/hooks/pre-push"; git -C "$ug" config paperplane.blockForcePush true
+expect "git hook: uninstall over a foreign hook" 0 in_dir "$ug" bash "$H/install-git-hook.sh" --uninstall
+check "git hook: uninstall over a foreign hook keeps paperplane.blockForcePush" test "$(git -C "$ug" config --get paperplane.blockForcePush)" = true
+check "git hook: uninstall over a foreign hook keeps the hook" test -s "$ug/.git/hooks/pre-push"
 
 # @@NEW-TESTS@@
 

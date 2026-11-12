@@ -32,6 +32,17 @@ git reset -q --hard HEAD~1
 echo X=1 > .env.local; git add -f .env.local; git commit -qm env
 expect "pre-push blocks a .env file" 1 bash "$S/pre-push.sh"
 git reset -q --hard HEAD~1
+git switch -qc fix/env-elsewhere; echo X=1 > .env.local; git add -f .env.local; git commit -qm env; git switch -q fix/x
+expect "pre-push checks a given commit, not the checked-out branch" 1 bash "$S/pre-push.sh" origin/develop fix/env-elsewhere
+expect "pre-push with no commit still checks the checked-out branch" "$clean" bash "$S/pre-push.sh"
+expect "pre-push: unknown commit is not runnable" 2 bash "$S/pre-push.sh" origin/develop no-such-ref
+fake="$work/fake-gitleaks"; mkdir -p "$fake"
+printf '#!/bin/sh\necho "error: could not open repository" >&2; exit 1\n' > "$fake/gitleaks"; chmod +x "$fake/gitleaks"
+expect "pre-push: a gitleaks error blocks as an error, not a finding" 1 env PATH="$fake:$PATH" bash "$S/pre-push.sh"
+grep -q 'an error, not a finding' /tmp/pp-test-out.$$ || { fail=$((fail+1)); echo "FAIL pre-push: gitleaks error message"; }
+printf '#!/bin/sh\necho "Finding: REDACTED"; echo "leaks found: 1"; exit 1\n' > "$fake/gitleaks"
+expect "pre-push: a gitleaks finding blocks as a secret" 1 env PATH="$fake:$PATH" bash "$S/pre-push.sh"
+grep -q 'gitleaks found a secret' /tmp/pp-test-out.$$ || { fail=$((fail+1)); echo "FAIL pre-push: gitleaks finding message"; }
 echo X= > .env.example; git add .env.example; git commit -qm example
 expect "pre-push allows .env.example" "$clean" bash "$S/pre-push.sh"
 mkdir dist; echo x > dist/a.js; git add -f dist; git commit -qm dist
