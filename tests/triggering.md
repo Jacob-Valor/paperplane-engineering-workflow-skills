@@ -29,3 +29,4 @@ All requests come from a developer working in the `paperplanehq` GitHub org.
 23. My app crashes on start because API_URL is undefined in my local env.
 24. Which tag was deployed before prod-2026.10.09?
 25. Reply to the review comments on my PR #61.
+26. My PR was approved but now has merge conflicts with develop; sort it out.

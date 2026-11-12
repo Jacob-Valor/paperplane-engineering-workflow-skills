@@ -1,6 +1,6 @@
 ---
 name: paperplane-shipping-changes
-description: Paper Plane's rules for getting a change into develop through a branch and a draft PR. Use when making any code, config, or dependency change in a paperplanehq repository — creating a branch, committing, adding or updating packages, pushing, rebasing or force-pushing a branch, opening, stacking, or marking a pull request ready, answering review comments on your own PR — and especially when asked to push straight to develop/uat/main, "just commit everything", turn on auto-merge for a PR, bundle unrelated changes, or skip the PR because of a deadline.
+description: Paper Plane's rules for getting a change into develop through a branch and a draft PR. Use when making any code, config, or dependency change in a paperplanehq repository — creating a branch, committing, adding or updating packages, pushing, rebasing or force-pushing a branch, resolving conflicts on your own PR, opening, stacking, or marking a pull request ready, answering review comments on your own PR — and especially when asked to push straight to develop/uat/main, "just commit everything", turn on auto-merge for a PR, bundle unrelated changes, or skip the PR because of a deadline.
 license: Proprietary
 compatibility: Requires git, gh and pnpm; gitleaks recommended. Written for the paperplanehq GitHub org.
 metadata:
@@ -71,6 +71,18 @@ Deadlines and explicit requests don't change these. No exception is granted in t
 - Stack at most **two**, and only on a bottom PR that is **ready**. Before you branch from an open PR's branch, run `gh pr view <N> --json isDraft --jq .isDraft`: `true` means no stacking yet, so branch from `develop` or wait, and tell the user which. The upper PR's base is the bottom branch; its Risk says "stacked on #N, merge #N first".
 - After the bottom PR merges: `git fetch origin && git merge origin/develop`, verify, `bash <skill>/scripts/pre-push.sh`, `git push`, then `gh pr edit <N> --base develop` if GitHub didn't retarget.
 
+## Conflicts on your PR
+
+GitHub says "This branch has conflicts" (`mergeStateStatus` `DIRTY`). Resolving them is a new commit, so a Ready or approved PR follows step 7 like any other post-review commit.
+
+1. **Ready PR**: `gh pr ready <N> --undo` before anything else.
+2. **Merge, in the clone**: `git fetch origin && git merge origin/develop` (stacked: the base PR's branch). Never rebase, never GitHub's "Resolve conflicts" web editor: it commits with no local verify and no pre-push check (team convention, not in the guide).
+3. **`pnpm-lock.yaml`**: never stop at one side or edit it by hand. Start from `develop`'s copy and rebuild: `git checkout origin/develop -- pnpm-lock.yaml && pnpm install` adds your branch's `package.json` changes back (team convention, not in the guide).
+4. **Code**: read what the other PR changed before choosing (`git log -p --merge -- <file>`: during the merge, only the commits on both sides that touched it). Both changes fit together: keep both. They disagree on behaviour (two rounding rules, two error messages): stop, show the user both hunks, and ask which wins. Never "keep ours" or "take theirs" for a whole file to clear the marker.
+5. **Verify** again (step 3), `git add <file> …` by name, `git commit --no-edit`, step 5 check, `git push`.
+6. **Hand over**: show only the resolution with `git show --remerge-diff HEAD` (git 2.36+; on older git, tell the user to upgrade rather than review the whole merge) and stop until the user says go.
+7. **Approved PR**: the approval covered code that has now changed. Write the reviewer a message naming the resolved files and how each was resolved; the user posts it. Merging stays with the people, after the reviewer looks again.
+
 ## Dependencies
 
 `pnpm add <pkg>` and commit `pnpm-lock.yaml` with it. Install scripts need `pnpm approve-builds <pkg>`, explained under Risk. GitHub deps pin a SHA. Delete any other lockfile. Repo not on pnpm yet: use its tool, tell the user, migration is its own `chore/pnpm` PR (**paperplane-repo-setup**). Details: guide §5.
@@ -86,3 +98,5 @@ Deadlines and explicit requests don't change these. No exception is granted in t
 | "Pushing before the review skips the required human review" / "The PR opens ready, which matches 'mark it ready'" | The review gate is Ready, not the push. Push and open a **draft** the same day; Ready only after their go-ahead on the diff. |
 | "`git diff --stat` shows no `.env` or key files" | A key inside a source file never shows in `--stat`. Scan the content before the push. |
 | "I left the reviewer's other two comments alone, as you asked" | Deferring is fine; silence isn't. Draft the "why not" reply for the user to post today. |
+| "It's approved, so the conflict fix doesn't need another look" / "Going back to draft for a conflict restarts everything" | The resolution is new code nobody reviewed. Draft, resolve, show the diff, tell the reviewer. |
+| "Take theirs for the lockfile, keep ours for the code" | A whole-file side drops the other PR's change. Rebuild the lockfile with `pnpm install`; merge the code by hand. |
