@@ -257,7 +257,7 @@ rm c.txt
 # --- check never reads stdin
 routes nostdin; pr_json true ""
 bash "$R" >/dev/null 2>&1; resolve_routes; git add -- src/routes.ts
-expect "check with stdin open does not hang or read it" 0 bash -c "(sleep 5; echo '<<<<<<< x') | timeout 4 bash '$R' --check"
+expect "check with stdin open does not hang or read it" 0 bash -c "(sleep 5; echo '<<<<<<< x') | perl -e 'alarm 4; exec @ARGV' bash '$R' --check"
 git merge --abort
 
 # --- file names with spaces are quoted in the hint
