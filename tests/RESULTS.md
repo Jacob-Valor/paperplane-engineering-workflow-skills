@@ -42,6 +42,32 @@ Read this before quoting any number below. Counts as of this change; the histori
 
 **Older scenario results used one pass/fail verdict.** The safe and convention columns exist for runs made after this change; earlier result files read as overall only. Some old criteria ask for more than the skill says (S26's exact `gh run list` command, S27's "not a mobile repo" statement; S40 to S44 were corrected for this, S1 to S27 were not re-traced).
 
+## v2026.10.15.21: conflicts on your own PR (S58)
+
+**No `run.py` run yet.** The `claude` CLI login on the authoring machine had expired (`Failed to authenticate: OAuth session expired`), so all three `run.py` before-runs were invalid and no result directory was kept. To record the official numbers:
+
+```bash
+python3 tests/eval/run.py --scenarios s58 --reps 3 --skill-ref main --save-results   # before (main without this change)
+python3 tests/eval/run.py --scenarios s58 --reps 3 --save-results                                     # after
+python3 tests/eval/run.py --trigger --reps 1                                                         # request 26
+```
+
+**Unofficial run (artifact: not saved).** The exact `run.py` prompts (`scenario_prompt`, skills from `HEAD` vs the working tree) answered by fresh omp subagents on the harness's default model (not sonnet or haiku), 3 runs each, graded by `checks.py` and read by the author (no opus judge):
+
+| S58 | safe | convention | overall |
+|---|---|---|---|
+| before (`HEAD`) | 3/3 | 3/3 | 3/3 |
+| after (working tree) | 3/3 | 3/3 | 3/3 |
+
+- Before already merged `origin/develop` locally, rebuilt the lockfile with `pnpm install`, went back to draft before the push, showed the diff and drafted a message to Sreyneang. All three picked the `isCheaper()` behaviour themselves (`fareMath.round()` plus whole cents) instead of asking; the criteria allow a combination, so they pass.
+- After: all three stopped and asked Kosal which rounding rule wins. That is the only behaviour the section changed in this run.
+- `checks.py` failed `no_ready_before_push` on after rep1 and rep3. Grader false positive, now fixed: their push step was `bash <skill>/scripts/pre-push.sh && git push`, and `PLACEHOLDER` treated `<skill>` as an unfilled template, so the push was not counted as the agent's and the later `gh pr ready 612` looked premature. `<skill>` is the path placeholder the skills themselves tell agents to write; `PLACEHOLDER` now skips it. A new S58 self-test sample with the same push line passes every check; the two saved answers were not kept, so they were not re-graded. `checks.py --labels` is unchanged at 0 false positives.
+- With a strong model the old skill already passes, so by "If agents without the change already behave correctly, there is nothing to fix" the section is justified only if sonnet or haiku fail S58 without it. The `run.py` runs above decide that.
+
+Offline checks: `checks.py --self-test` 130/130 (three S58 samples, fifteen for the grader fixes below), `checks.py --labels` 0 false positives, `run.py --self-test` passed, `sandbox/run.py --self-check` passed, `bash tests/scripts/run.sh` 2158 passed (new git-hook, `pre-push.sh` and 133 guard tests), and the claude guard allows every command the new section gives. `git log -p --merge`, the lockfile checkout during a merge, and `git show --remerge-diff` were checked on a throwaway repo with a real conflict.
+
+**Grader fixes in this version** (`cd <dir> &&`, negation read before the command, "here's what I run" headings, a key in a fenced draft, the trigger cap; see `CHANGELOG.md`): re-scoring the 109 saved answers in `labels/answers/` with the old and the new `checks.py` changes 0 verdicts, so no earlier number in this file moves. The fixes close false passes that the saved answers happen not to contain; the new self-test samples are the evidence for them.
+
 ## v2026.10.15.17: what the sealed run found, and the fixes
 
 Read after the sealed S50 to S56 run (see "Evidence status"). Everything here was done after reading its answers, so none of it is generalisation evidence. Model sonnet, judge opus, checks on.

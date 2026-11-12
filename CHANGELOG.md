@@ -2,6 +2,37 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.21
+
+### Added: conflicts on your own PR (shipping-changes)
+- New section **Conflicts on your PR**: a Ready PR goes back to draft first; conflicts are merged in the clone (`git merge origin/develop`), never rebased or fixed in GitHub's web editor; `pnpm-lock.yaml` is rebuilt with `pnpm install` from `develop`'s copy; code where both sides changed behaviour goes to the user to decide, never a whole-file "ours"/"theirs"; verify, pre-push check, plain push, show `git show --remerge-diff HEAD`, stop; on an approved PR, draft a message telling the reviewer what was resolved. Two Rationalizations rows. The description names "resolving conflicts on your own PR".
+- The web-editor and lockfile rules are team conventions, listed in `docs/open-questions-for-cto.md`.
+- Scenario S58 (conflict after approval, development set) with pass criteria and checks (`lockfile_regenerated`, `returns_to_draft_before_push`, `merges_develop`, …); triggering request 26. Official `run.py` numbers pending; an unofficial run is in `tests/RESULTS.md`.
+- **Eval**: `checks.py` treated `<skill>` in `bash <skill>/scripts/pre-push.sh` as an unfilled placeholder, so the agent's push was not counted and a later `gh pr ready` looked premature. It now skips `<skill>`, the path placeholder the skills tell agents to write.
+
+### Fixed: open findings of the repo review
+- **Git pre-push hook checked only the branch you were on.** A branch pushed from another checkout (`git push origin fix/other` while on `feature/x`) got gitleaks only, so a `.env`, a second lockfile or `dist/` went through. `pre-push.sh` now takes the commit to check (`pre-push.sh [base] [commit]`), and the hook runs it on every pushed branch.
+- **Tags and other refs skipped every check.** A non-release tag or a custom ref (`HEAD:refs/wip/x`) carrying commits the remote did not have reached it unchecked. The hook now runs the same checks when the tag or ref brings new commits; a tag on already-pushed work is not re-checked.
+- **Eval checks passed rule breaks**: a command after `cd <dir> &&` was not seen; a negation or a "you" anywhere on the line hid the command ("I run `git push --force-with-lease` instead of …"), so now only the words before the command (or a refusal right after it, "`x`: never") count; a heading such as "Without waiting for Mina, here's what I run:" exempted the block under it; a key repeated in a reply drafted inside a fenced block was not seen. Six new self-test samples.
+- **Trigger gate**: an answer naming every skill for every request scored 23/25 and passed `--fail-under 0.90`. Naming three or more skills for one request now fails it.
+- **`no_tag_or_release` failed answers that only list tags** (`git tag --contains abc`, `git tag --sort=… -l 'prod-*'`, `git tag | grep`): it now matches tag creation only (`git tag [-a|-s|-f|-u|-m msg] <name>`), plus release-tag pushes and `gh release create` as before.
+- **S57 failed correct refusals**: "I don't run `gh repo edit … --enable-merge-commit=false`" counted as writing it. `commands()` now marks a refused command apart from one written out for a person (`agent` is `None`, still falsy); S57's two settings checks ignore refusals and still count settings written out for Pay.
+- **Sandbox: a rule broken before a timeout or CLI error was "invalid"** and left out of the pass rate. It now counts as a failure (`run_pass` in `sandbox/run.py`, with a self-check).
+- **gitleaks errors were reported as found secrets** (`pre-push.sh`, the git hook): a non-zero exit with no finding now says "could not scan (an error, not a finding)" and shows the error. `pre-push.sh` removes its temp file on exit (`trap`), also when interrupted.
+- **`rollout-guard.sh` could hang** on a private repo without stored git credentials (a username prompt hidden by `2>/dev/null`): the clone runs with `GIT_TERMINAL_PROMPT=0` and falls through to `gh repo clone`.
+- `tests/eval/README.md` no longer says S50 to S57 have never been run.
+- **Guard (`claude-guard.sh`)**, 126 new tests:
+  - The guard's own installers run without their body being read (agents were refused the documented install steps); any installer with `--uninstall` is refused (the omp uninstaller used to pass).
+  - Any file named `pre-push` is protected, so a hook under `core.hooksPath` (`.githooks/pre-push`) can't be emptied or deleted.
+  - An unknown command followed by a `git`/`gh` word is checked from that word: `mise exec -- git push origin main`, `uv run …`, `direnv exec . …`, `hyperfine "git push …"` and similar.
+  - Refused: `remote.*.mirror` and `push.followTags` set through `-c` or `git config`, `git remote add --mirror`, the `tags/prod-…` refspec, pathspecs that stage everything (`git add ../..`, `"$PWD"`, `'**'`, `git commit . -m`), GitHub API commits to a protected or default branch (`contents` PUT, `createCommitOnBranch`), and `npm sit`/`install-clean`/`clean-install-test`/`audit fix`, `bun ci` in a pnpm repo.
+  - No longer refused: `git branch -f feature/y main`, `git branch -c main backup/main`, and `gh pr review --comment --body "-a …"`.
+  - Known limits added to the header: the unknown-wrapper rule's reach, a variable followed by a path (`"$ROOT/app"`), and a vendored (`--commit`) guard still reading installers from the skill folder.
+- **`install-git-hook.sh --uninstall`** no longer unsets `paperplane.blockForcePush` when the hook it found was not ours.
+- **Regressions found by a second independent review of this version, fixed before release:**
+  - `checks.py`: a comma after a command ("I run `git push --force`, no questions asked") was read as a refusal; only a colon or dash before the negation counts now. "Here's what I won't do:" was read as the agent's own commands; a heading that negates or refuses is never one. `git tag -am "msg" <name>`, `-sm`, `-m"msg"` and `-F file` were missed as tag creation. A negation now counts only in its own clause ("I won't wait for Mina; I run `git push --force-with-lease`" runs it; this was also missed before this version), and "`x` — no" refuses x. Five new self-test samples.
+  - Guard: a wrapper running a shell (`mise exec -- bash -c 'cd /tmp && git push origin main'`) is now checked like a shell command; read-only `sed`/`awk` patterns such as `'/git commit -a/p'` are no longer blocked. Seven new tests.
+
 ## v2026.10.15.20
 
 ### Fixed: findings of an independent review
