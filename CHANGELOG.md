@@ -2,6 +2,16 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.10.15.22
+
+### Added: `resolve-conflicts.sh` (shipping-changes), a helper that never commits or pushes
+- **Start** (`bash <skill>/scripts/resolve-conflicts.sh [--base <branch>]`): takes a Ready PR back to draft, runs `git merge --no-commit origin/<base>` (base from the PR, else develop), rebuilds each conflicting `pnpm-lock.yaml` with `pnpm install --lockfile-only` in its own folder when both sides still have it (after a conflicting `package.json` or `pnpm-workspace.yaml` is resolved, in `--check`), and prints every other conflict with its kind (text, binary, symlink, deleted on one side) and the commits that touched it on both sides. Any `gh` failure other than "no pull requests found" stops it before the merge; `gh` warnings on stderr are kept apart from its answer.
+- **Check** (`--check`): works only on the merge the start began on this branch. It refuses while a conflicted file has a conflict marker (7 or more `<`, `>` or `|`, CRLF too, literal file names), is unstaged, or cannot be read (fail closed), in every conflicted file and every staged file that differs from both parents; marker-like lines already in a parent do not count. On success it prints `git commit --no-edit`, the pre-push check and `git push origin <branch>` for the agent to run, and for an approved PR a message for the reviewer.
+- **`pre-push.sh`** (and so the git hook) now blocks conflict-marker lines added on the branch, whoever committed them.
+- The "Conflicts on your PR" section is four steps around the helper; behaviour, binary, symlink and deleted-file conflicts go to the person.
+- Tests: `tests/scripts/test-resolve-conflicts.sh` (79, real git with fake gh/pnpm/gitleaks), two new `pre-push.sh` tests, guard tests for the helper on a feature branch and on develop, S58 checks that accept the helper, and the sandbox `conflict-mechanical` case through the helper.
+- **How it got here**: four independent reviews of a version that also committed, resumed and pushed found 8, 6, 10 and 10 problems, including conflict markers pushed in each round and, in the third, a push to `develop` through `push.default=matching`. Every round's fixes held, but each recovery path added new holes. The helper was cut back to the parts that never push; committing and pushing go through the skill's normal step 5, which the pre-push check, the git hook and the guard already cover.
+
 ## v2026.10.15.21
 
 ### Added: conflicts on your own PR (shipping-changes)

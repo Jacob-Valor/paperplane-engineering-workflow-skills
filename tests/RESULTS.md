@@ -42,6 +42,18 @@ Read this before quoting any number below. Counts as of this change; the histori
 
 **Older scenario results used one pass/fail verdict.** The safe and convention columns exist for runs made after this change; earlier result files read as overall only. Some old criteria ask for more than the skill says (S26's exact `gh run list` command, S27's "not a mobile repo" statement; S40 to S44 were corrected for this, S1 to S27 were not re-traced).
 
+## v2026.10.15.22: `resolve-conflicts.sh` helper and real-conflict sandbox scenarios
+
+**No model run yet** (same blocker as v2026.10.15.21: no `claude` login or `ANTHROPIC_API_KEY`). What is verified offline:
+
+- `tests/scripts/test-resolve-conflicts.sh` (79 checks, real git, fake `gh`/`pnpm`/`gitleaks`): draft step only for a Ready PR, merge not rebase, lockfiles rebuilt (also nested, also after `package.json`), every kind of conflict listed and left to a person when it has no text, `--check` refuses markers (long, CRLF, non-ASCII and `:` names, a 1 MB file, a new file, an unreadable object), unstaged files and merges it did not start, accepts example markers already in a parent, and the helper never commits, pushes or marks Ready; the printed commit-and-push steps produce a two-parent merge on origin.
+- `pre-push.sh` blocks conflict markers added on the branch (2 tests); a manual check showed it leaves an example already on the base alone.
+- The guard (installed and committed copy) allows the helper and `--check` on a feature branch and refuses them on `develop`.
+- Sandbox `conflict-mechanical` and `conflict-behaviour` (`sandbox/run.py --self-check`): graders pass good end states (by hand and through the helper) and fail rebase+force-push, markers left, one side's lockfile, a lost route, pushing while Ready, Ready after the push, auto-merge, a pushed "keep ours", and asking without showing both versions.
+- Four independent reviews of the earlier version that also committed and pushed: 8, 6, 10 and 10 findings (see `CHANGELOG.md`). It was cut back to this helper because the findings were not shrinking.
+
+To get the first real numbers: `python3 tests/eval/sandbox/run.py --scenarios conflict-mechanical,conflict-behaviour --reps 3 --model haiku,sonnet --enforcement both`, and the S58 commands below.
+
 ## v2026.10.15.21: conflicts on your own PR (S58)
 
 **No `run.py` run yet.** The `claude` CLI login on the authoring machine had expired (`Failed to authenticate: OAuth session expired`), so all three `run.py` before-runs were invalid and no result directory was kept. To record the official numbers:

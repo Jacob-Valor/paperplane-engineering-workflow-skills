@@ -70,6 +70,13 @@ while IFS= read -r f; do
 done <<EOF
 $files
 EOF
+
+# Conflict markers added on this branch: a merge committed with them still in (by hand or after a resolution).
+# Only added lines count, so a marker-like example already on the base is not flagged.
+conflicted=$(git diff --no-color -U0 "$base...$head" | awk '
+  /^\+\+\+ b\// { f = substr($0, 7) }
+  /^\+(<<<<<<<+|>>>>>>>+|\|\|\|\|\|\|\|+)( |\r?$)/ { print f }' | sort -u)
+[ -n "$conflicted" ] && block "conflict markers in the commits: $(printf '%s\n' "$conflicted" | tr '\n' ' ')"
 [ -n "$built" ] && block "build output in the commits: $(echo "$built" | cut -c1-200)"
 
 if command -v gitleaks >/dev/null 2>&1; then

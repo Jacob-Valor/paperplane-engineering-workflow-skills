@@ -73,15 +73,12 @@ Deadlines and explicit requests don't change these. No exception is granted in t
 
 ## Conflicts on your PR
 
-GitHub says "This branch has conflicts" (`mergeStateStatus` `DIRTY`). Resolving them is a new commit, so a Ready or approved PR follows step 7 like any other post-review commit.
+GitHub says "This branch has conflicts" (`mergeStateStatus` `DIRTY`). Resolving them is a new commit, so a Ready or approved PR follows step 7 like any other post-review commit. Run from the repo root:
 
-1. **Ready PR**: `gh pr ready <N> --undo` before anything else.
-2. **Merge, in the clone**: `git fetch origin && git merge origin/develop` (stacked: the base PR's branch). Never rebase, never GitHub's "Resolve conflicts" web editor: it commits with no local verify and no pre-push check (team convention, not in the guide).
-3. **`pnpm-lock.yaml`**: never stop at one side or edit it by hand. Start from `develop`'s copy and rebuild: `git checkout origin/develop -- pnpm-lock.yaml && pnpm install` adds your branch's `package.json` changes back (team convention, not in the guide).
-4. **Code**: read what the other PR changed before choosing (`git log -p --merge -- <file>`: during the merge, only the commits on both sides that touched it). Both changes fit together: keep both. They disagree on behaviour (two rounding rules, two error messages): stop, show the user both hunks, and ask which wins. Never "keep ours" or "take theirs" for a whole file to clear the marker.
-5. **Verify** again (step 3), `git add <file> …` by name, `git commit --no-edit`, step 5 check, `git push`.
-6. **Hand over**: show only the resolution with `git show --remerge-diff HEAD` (git 2.36+; on older git, tell the user to upgrade rather than review the whole merge) and stop until the user says go.
-7. **Approved PR**: the approval covered code that has now changed. Write the reviewer a message naming the resolved files and how each was resolved; the user posts it. Merging stays with the people, after the reviewer looks again.
+1. **Start**: `bash <skill>/scripts/resolve-conflicts.sh` (stacked: `--base <bottom branch>`). It takes a Ready PR back to draft, merges `origin/<base>` in the clone (never a rebase, never GitHub's "Resolve conflicts" web editor, which commits with no verify and no pre-push check), and rebuilds each conflicting `pnpm-lock.yaml` with pnpm, never by hand (both team convention, not in the guide). Exit 0: nothing left to decide, go to step 3 below. Exit 3: already up to date, nothing to do. Exit 4: it printed each remaining conflict with the commits that touched it on both sides. Exit 1 or 2: do what it printed (fix `gh`, install pnpm, move an untracked file, or `git merge --abort` a merge you started by hand); never work around it.
+2. **Decide each conflict** it printed. Both changes fit together (two new routes, two imports): keep both. They disagree on behaviour (two rounding rules, two error messages), or there is no text to merge (a binary file, a symlink, a file deleted on one side): stop, show the user both versions, and ask which wins; wait for the answer. Never "keep ours" or "take theirs" for a whole file to clear the marker. Then verify (workflow step 3) and stage each file by name: `git add -- <file> …`.
+3. **Check**: `bash <skill>/scripts/resolve-conflicts.sh --check`. It rebuilds lockfiles still waiting and refuses (exit 1) while a conflicted file has a conflict marker, is unstaged or cannot be read. Exit 0: run the commands it prints right away, with nothing in between: `git commit --no-edit`, the step 5 check, `git push origin <branch>`. The script never commits or pushes; `pre-push.sh` also blocks conflict markers added on the branch.
+4. **Hand over**: show the user the resolution (`git show --remerge-diff HEAD`) and, for an approved PR, the reviewer message `--check` printed (they post it; the reviewer looks again before anyone merges). Stop until they say go; only then `gh pr ready <N>`.
 
 ## Dependencies
 

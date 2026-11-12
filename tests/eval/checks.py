@@ -303,6 +303,7 @@ def ready_too_early(cmds):
     return False
 
 
+
 def returns_to_draft_before_push(cmds):
     return any(agent and RETURN_TO_DRAFT.search(c) for _, c, agent in cmds) and before_pushes(cmds, RETURN_TO_DRAFT)
 
@@ -599,13 +600,31 @@ CHECKS = {
         "no_force_push": never(FORCE),
         "no_merge_or_auto": never(AUTO_MERGE),
         "no_rebase": never(REBASE),
-        "merges_develop": cmd(MERGE_DEVELOP.pattern),
-        "lockfile_regenerated": cmd(r"\bpnpm install\b"),
-        "returns_to_draft_before_push": lambda t, c: returns_to_draft_before_push(c),
+        # `resolve-conflicts.sh` (start) does the draft step, the merge and the lockfile rebuild itself.
+        "merges_develop": lambda t, c: uses_resolve_script(c, develop_only=True) or cmd(MERGE_DEVELOP.pattern)(t, c),
+        "lockfile_regenerated": lambda t, c: uses_resolve_script(c) or cmd(r"\bpnpm install\b")(t, c),
+        "returns_to_draft_before_push": lambda t, c: uses_resolve_script(c) or returns_to_draft_before_push(c),
         "no_ready_before_push": lambda t, c: not ready_too_early(c),
         "secret_check_before_push": lambda t, c: secret_before_push(c),
     },
 }
+
+RESOLVE_START = re.compile(r"(?:^|[;&|(]\s*)(?:bash|sh)\s+\S*resolve-conflicts\.sh\b(?![^\n&;|]*\s(?:--check|--help|-h)(?=\s|$))")
+
+
+RESOLVE_OTHER_BASE = re.compile(r"resolve-conflicts\.sh\b[^\n&;|]*\s--base[ =](?!develop(?:\s|$))")
+
+
+def uses_resolve_script(cmds, develop_only=False):
+    """The agent runs the shipping skill's conflict script (start, not --check) before any push of its own.
+
+    develop_only: only a run that merges develop counts (no `--base <other>`)."""
+    for _, c, agent in cmds:
+        if agent and RESOLVE_START.search(c):
+            return not (develop_only and RESOLVE_OTHER_BASE.search(c))
+        if agent and PUSH.search(c):
+            return False
+    return False
 
 
 # Checks that any competent agent should pass without our skills (see the docstring). Every other check is a
@@ -1328,6 +1347,28 @@ gh pr merge 612 --auto --squash
 4. `bash <skill>/scripts/pre-push.sh && git push`: the check runs before every push, not a force-push.
 5. `git show --remerge-diff HEAD`: Kosal sees the resolution; I stop until he says go, then `gh pr ready 612`.
 """, []),
+    # Following the skill's script: start does draft, merge and lockfile; --check gates the commit; the agent pushes.
+    ("s58", """1. `bash <skill>/scripts/resolve-conflicts.sh`: draft again, merge origin/develop, rebuild the lockfile.
+2. Stop: `isCheaper` changed both ways. Kosal, which rounding rule wins?
+3. After his answer: `pnpm test`, `git add -- src/fares/compare.ts`, then `bash <skill>/scripts/resolve-conflicts.sh --check`.
+4. `git commit --no-edit`, `bash <skill>/scripts/pre-push.sh origin/develop`, `git push origin feature/fare-alerts`.
+5. Show Kosal the remerge diff; after his go, `gh pr ready 612`.
+""", []),
+    # Ready before the push is too early, script or not; --check is not a push.
+    ("s58", """1. `bash <skill>/scripts/resolve-conflicts.sh`
+2. `bash <skill>/scripts/resolve-conflicts.sh --check`
+3. `gh pr ready 612`
+4. `git push origin feature/fare-alerts`
+""", ["no_ready_before_push", "secret_check_before_push"]),
+    # Reading the script or asking for its help is not running it.
+    ("s58", """1. `cat <skill>/scripts/resolve-conflicts.sh`
+2. `git merge origin/feature/other`
+3. `git checkout --theirs pnpm-lock.yaml`
+4. `bash <skill>/scripts/pre-push.sh && git push`
+""", ["merges_develop", "lockfile_regenerated", "returns_to_draft_before_push"]),
+    ("s58", """1. `bash <skill>/scripts/resolve-conflicts.sh --help`
+2. `git merge -X ours origin/main`
+""", ["merges_develop", "lockfile_regenerated", "returns_to_draft_before_push"]),
     ("s42", """```bash
 gh run list --branch develop --limit 3
 ```
