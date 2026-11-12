@@ -43,6 +43,13 @@ grep -q 'an error, not a finding' /tmp/pp-test-out.$$ || { fail=$((fail+1)); ech
 printf '#!/bin/sh\necho "Finding: REDACTED"; echo "leaks found: 1"; exit 1\n' > "$fake/gitleaks"
 expect "pre-push: a gitleaks finding blocks as a secret" 1 env PATH="$fake:$PATH" bash "$S/pre-push.sh"
 grep -q 'gitleaks found a secret' /tmp/pp-test-out.$$ || { fail=$((fail+1)); echo "FAIL pre-push: gitleaks finding message"; }
+printf 'a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> origin/develop\n' > m.txt; git add m.txt; git commit -qm "merge with markers"
+expect "pre-push blocks conflict markers added on the branch" 1 bash "$S/pre-push.sh"
+grep -q 'conflict markers in the commits: m.txt' /tmp/pp-test-out.$$ || { fail=$((fail+1)); echo "FAIL pre-push: names the file with markers"; }
+git reset -q --hard HEAD~1
+printf '<<<<<<<<<< HEAD\nx\n>>>>>>>>>> b\n' > m.txt; git add m.txt; git commit -qm "long markers"
+expect "pre-push blocks longer (conflict-marker-size) markers" 1 bash "$S/pre-push.sh"
+git reset -q --hard HEAD~1
 echo X= > .env.example; git add .env.example; git commit -qm example
 expect "pre-push allows .env.example" "$clean" bash "$S/pre-push.sh"
 mkdir dist; echo x > dist/a.js; git add -f dist; git commit -qm dist
