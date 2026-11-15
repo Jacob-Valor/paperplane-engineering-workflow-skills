@@ -20,7 +20,8 @@ if ! command -v jq >/dev/null 2>&1; then echo "jq not installed; the fake gh nee
 work=$(mktemp -d); trap 'rm -rf "$work" /tmp/pp-test-out.$$' EXIT
 cd "$work" || exit 1
 mkdir bin
-# Fake gh: serves files from $FAKE_GH; `noaccess` there makes every call fail with HTTP 404.
+# Fake gh: serves files from $FAKE_GH/files, or $FAKE_GH/refs/<ref>/ when that holds the file at the ref asked for;
+# `noaccess` there makes every call fail with HTTP 404.
 cat > bin/gh <<'EOF'
 #!/usr/bin/env bash
 [ "$1" = api ] || exit 1
@@ -29,7 +30,8 @@ while [ $# -gt 0 ]; do case $1 in --jq) jqf=$2; shift 2 ;; *) shift ;; esac; don
 [ -e "$FAKE_GH/noaccess" ] && { if [ -s "$FAKE_GH/noaccess" ]; then cat "$FAKE_GH/noaccess"; else echo "gh: Not Found (HTTP 404)"; fi >&2; exit 1; }
 case $ep in
   repos/paperplanehq/paperplane-engineering) out='{"full_name":"paperplanehq/paperplane-engineering"}' ;;
-  */contents/*) p=${ep#*/contents/}; p=${p%%\?*}; out=$(cat "$FAKE_GH/files/$p" 2>/dev/null) || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; } ;;
+  */contents/*) p=${ep#*/contents/}; r=${p#*\?ref=}; p=${p%%\?*}; f="$FAKE_GH/files/$p"; [ -f "$FAKE_GH/refs/$r/$p" ] && f="$FAKE_GH/refs/$r/$p"
+    out=$(cat "$f" 2>/dev/null) || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; } ;;
   */commits\?*) p=${ep#*path=}; p=${p%%&*}; out=$(cat "$FAKE_GH/commits/${p//\//_}.json" 2>/dev/null || echo '[]') ;;
   *) echo "fake gh: unknown endpoint $ep" >&2; exit 1 ;;
 esac
@@ -40,7 +42,7 @@ export PATH="$work/bin:$PATH" FAKE_GH="$work/gh" SKILLS_DIR="$work/skills"
 unset DRIFT_ALLOW_SKIP GH_TOKEN
 
 setup() { # fresh skills copy and a guide that matches it
-  rm -rf "$work/skills" "$FAKE_GH"
+  rm -rf "$work/skills" "$work/docs" "$FAKE_GH"
   cp -R "$here/skills" "$work/skills"
   for f in "$work"/skills/*/SKILL.md; do
     awk '/^[ ]+guide-version:/{sub(/guide-version:.*/, "guide-version: \"2026-10-13\"")} {print}' "$f" > "$f.new" && mv "$f.new" "$f"
@@ -56,6 +58,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Not a job name
+      - name: PR body is complete
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.user.login != 'dependabot[bot]' }}
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          MOBILE: ${{ inputs.mobile }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+        run: |
+          if [ "$DRAFT" = "true" ]; then echo "draft: not checked yet"; exit 0; fi
+          fail=0
+          section() { printf '%s' "$BODY" | awk -v h="## $1" 'index($0,h)==1{f=1;next} /^## /{f=0} f' | sed -e 's/<!--.*-->//g' -e '/^[[:space:]]*$/d'; }
+          [ -n "$(section 'How I verified it' | grep -vE '^- (Commands|iOS|Android|Screenshots):[[:space:]]*$')" ] || { echo "::error::'How I verified it' is empty"; fail=1; }
+          [ -n "$(section 'Risk')" ] || { echo "::error::'Risk' is empty"; fail=1; }
+          printf '%s' "$BODY" | grep -Eq '^AI-assisted: *(yes|no)' && ! printf '%s' "$BODY" | grep -Eq '^AI-assisted: *yes */ *no' || { echo "::error::'AI-assisted: yes' or 'AI-assisted: no' line missing (the template placeholder does not count)"; fail=1; }
+          if [ "$MOBILE" = "true" ]; then
+            for p in iOS Android; do
+              line=$(printf '%s' "$BODY" | grep -E "^- $p:" | head -1 | sed -e 's/<!--.*-->//' -e "s/^- $p:[[:space:]]*//")
+              [ -n "$line" ] || { echo "::error::'- $p:' line is empty; name the device/simulator or write 'not a mobile change'"; fail=1; }
+              # Ready means checked: a line that opens with "pending" is a draft (2026-11-13: 9 of 17 ready PRs said so).
+              if printf '%s' "$line" | sed -e 's/^[*_`[:space:]]*//' | grep -Eqi '^(pending|todo|tbd|not (yet )?(verified|tested|checked|run|done))([^a-z]|$)'; then
+                echo "::error::'- $p:' says the check is not done. Run it, or convert the PR back to draft until it is."; fail=1
+              fi
+              printf '%s' "$line" | grep -qi 'not a mobile change' || device=1
+            done
+            # Signal, not a gate yet: a device claim with nothing to look at cannot be reviewed.
+            if [ "${device:-0}" = "1" ] && ! printf '%s' "$BODY" | grep -Eqi '!\[|<img |<video |user-attachments/'; then
+              echo "::warning::A mobile change with no screenshot or recording in the body; attach one per platform under 'Screenshots'."
+            fi
+          fi
+          exit $fail
   conformance:
     name: conformance
     runs-on: ubuntu-latest
@@ -63,9 +94,6 @@ jobs:
     name: AI review (advisory)
     runs-on: ubuntu-latest
 EOF
-  # The CI step's pending regex, as the guide writes it (single-quoted grep -Eqi on the device line).
-  re=$(sed -n "s/^pending_re='\(.*\)'.*/\1/p" "$work/skills/paperplane-shipping-changes/scripts/check-pr-body.sh")
-  printf "      - name: PR body is complete\n        run: |\n          if printf '%%s' \"\$line\" | sed -e 's/^[*_\`[:space:]]*//' | grep -Eqi '%s'; then fail=1; fi\n" "$re" >> "$FAKE_GH/files/.github/workflows/standard-checks.yml"
   {
     printf '## How I verified it\n- Commands:\n- iOS:\n- Android:\n\n## Checklist\n'
     for _ in 1 2 3 4 5 6 7; do echo '- [ ] item'; done
@@ -83,6 +111,8 @@ commit() { # commit <path> <date> <message>
 setup
 expect "matching guide passes" 0 bash "$C"
 says "matching guide reports OK lines" '^OK +checklist boxes +7 boxes'
+says "matching guide: pinned CI same as develop" '^OK +pinned CI +@v1 runs the same checks as develop$'
+says "matching guide: body step behaviour agrees" '^OK +body step behaviour +[0-9]+ bodies x 2 modes agree$'
 if grep -q 'Not a job name' /tmp/pp-test-out.$$; then fail=$((fail+1)); echo "FAIL step names are not job names"
 else pass=$((pass+1)); echo "ok   step names are not job names"; fi
 
@@ -161,6 +191,47 @@ setup
 grep -v 'grep -Eqi' "$FAKE_GH/files/.github/workflows/standard-checks.yml" > t && mv t "$FAKE_GH/files/.github/workflows/standard-checks.yml"
 expect "CI pending check gone is drift" 1 bash "$C"
 says "drift says the step changed" '^DRIFT +pending regex +no grep -Eqi'
+
+# Behaviour: the real step text runs against tests/drift/bodies; a looser step is drift even when the regex matches.
+setup
+sed -i.bak 's/|Android|Screenshots)/|Android)/' "$FAKE_GH/files/.github/workflows/standard-checks.yml"
+expect "CI step without the Screenshots exclusion is drift" 1 bash "$C"
+says "Screenshots: the regex compare still agrees" '^OK +pending regex '
+says "Screenshots: drift names the fixture and mode" "^DRIFT +body step behaviour +14-screenshots-only\.md --no-mobile: develop's 'PR body is complete' step passes; check-pr-body\.sh fails \(exit 1\)"
+if grep -qE 'body step behaviour +14-screenshots-only\.md --mobile' /tmp/pp-test-out.$$; then fail=$((fail+1)); echo "FAIL Screenshots: --mobile still agrees (empty device lines fail both)"
+else pass=$((pass+1)); echo "ok   Screenshots: --mobile still agrees (empty device lines fail both)"; fi
+
+setup
+sed -i.bak "s/grep -Eqi '^(pending[^']*'/false/" "$FAKE_GH/files/.github/workflows/standard-checks.yml"
+expect "CI step without the pending check is drift" 1 bash "$C"
+says "no pending check: drift names the pending fixture" "^DRIFT +body step behaviour +05-ios-pending\.md --mobile: develop's 'PR body is complete' step passes; check-pr-body\.sh fails"
+if grep -q 'body step behaviour.*--no-mobile' /tmp/pp-test-out.$$; then fail=$((fail+1)); echo "FAIL no pending check: --no-mobile still agrees"
+else pass=$((pass+1)); echo "ok   no pending check: --no-mobile still agrees"; fi
+
+setup
+sed -i.bak 's/name: PR body is complete/name: PR body present/' "$FAKE_GH/files/.github/workflows/standard-checks.yml"
+expect "renamed CI step is drift" 1 bash "$C"
+says "renamed step: drift says the step is gone" "^DRIFT +body step behaviour +no 'PR body is complete' step"
+
+# Pinned CI: repos run standard-checks.yml at the template's pin; a gap with develop must be logged for the CTO.
+setup
+mkdir -p "$FAKE_GH/refs/v1/.github/workflows"
+sed 's/|Android|Screenshots)/|Android)/' "$FAKE_GH/files/.github/workflows/standard-checks.yml" > "$FAKE_GH/refs/v1/.github/workflows/standard-checks.yml"
+expect "pinned CI older than develop, not logged, is drift" 1 bash "$C"
+says "undocumented gap: drift says log it" "^DRIFT +pinned CI +repos run standard-checks\.yml@v1, older than develop; log it in $work/docs/open-questions-for-cto\.md"
+mkdir -p "$work/docs"
+printf '| Pinned CI lags develop (pinned-ci-lags-develop) | ... |\n' > "$work/docs/open-questions-for-cto.md"
+expect "pinned CI older than develop, logged, passes" 0 bash "$C"
+says "documented gap: OK line" '^OK +pinned CI +repos run standard-checks\.yml@v1, older than develop; logged in .*open-questions-for-cto\.md \(pinned-ci-lags-develop\)'
+mkdir -p elsewhere && mv "$work/docs/open-questions-for-cto.md" elsewhere/
+expect "DOCS_DIR points at the log" 0 env DOCS_DIR=elsewhere bash "$C"
+expect "log missing from the default docs dir is drift" 1 bash "$C"
+
+setup
+mkdir -p "$work/docs"
+printf '| Pinned CI lags develop (pinned-ci-lags-develop) | ... |\n' > "$work/docs/open-questions-for-cto.md"
+expect "pinned CI same as develop with a logged gap is drift" 1 bash "$C"
+says "stale marker: drift says remove it" '^DRIFT +pinned CI +@v1 runs the same checks as develop, but .*open-questions-for-cto\.md still has the pinned-ci-lags-develop row; remove it'
 
 setup
 : > "$FAKE_GH/noaccess"

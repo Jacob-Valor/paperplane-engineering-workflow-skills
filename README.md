@@ -56,6 +56,7 @@ tests/triggering.md                       do the descriptions pick the right ski
 tests/README.md                           how to run them and the pass criteria
 tests/RESULTS.md                          before/after scores for every change
 tests/eval/run.py                         runs the scenarios through `claude -p` and grades them
+tests/eval/omp_bridge.py                  the same runner through an omp kernel's completion(), when `claude -p` is unavailable
 tests/eval/checks.py                      mechanical checks on top of the model grader
 tests/eval/sandbox/run.py                 tool-using eval in a throwaway repo, graded by end state
 tests/scripts/                            behaviour tests for every script and hook, run in CI

@@ -19,20 +19,22 @@ Matches the guide of 2026-11-14 (standard v2, v2.1, v2.2 and `reviewing.md`). Be
 - Not changed, on purpose: re-requesting review and not pushing to a merged branch. Baselines already passed S64 and S65 (`tests/RESULTS.md`).
 
 ### Fixed
-- **`check-pr-body.sh`** passed a ready app-repo body whose `- iOS:`/`- Android:` line said "pending" or "not verified yet"; CI fails it. It now uses CI's regex verbatim, warns like CI when a mobile change has no screenshot or recording, and ignores an empty `- Screenshots:` line.
+- **`check-pr-body.sh`** passed a ready app-repo body whose `- iOS:`/`- Android:` line said "pending" or "not verified yet", which the guide (§4) keeps a draft and CI on the guide's `develop` fails. It now uses that CI step's regex verbatim, warns when a mobile change has no screenshot or recording, and ignores an empty `- Screenshots:` line. Repos still pinned to `standard-checks.yml@v1` run an older step without these checks (logged in `docs/open-questions-for-cto.md`), so the local script is the stricter one there.
 - **`audit.sh`** failed every repo copied from the current template: it wanted `standard-checks.yml@develop`; it now wants `@v<N>`. CODEOWNERS: FAIL for a rule with no owner, WARN for one owner such as the template's `* @pay-tbd` (was FAIL under two).
 - **`check-pr-body.sh`** reads the body exactly as CI does: the device line is the first `- iOS:`/`- Android:` line of the raw body with only a same-line comment removed, so a multi-line comment holding `- iOS: pending` fails locally as it does in CI; the `AI-assisted` test is CI's own.
 - **`tests/drift/check.sh`**: two new checks, the template's `standard-checks.yml@vN` against `audit.sh`'s pattern and CI's pending regex against `check-pr-body.sh`'s; the guide-version check also watches `building.md`, `reviewing.md`, `CHANGELOG.md`, `conformance.mjs` and `unit-deploy.yml`, the sources of the new and rebased skills.
 - **`run.py`**: `--summarize` labelled a `--skill-ref` run as "working tree"; `run.json` and `summary.md` now record a digest of the skill text the prompts saw, the commit and whether `skills/` was dirty; `--summarize` includes the triggering results, so they are committed with `--save-results`.
 - **Eval**: `checks.py` accepts "Changes requested" as well as "Changes needed"; eight criteria rows say the same. S59 to S65 get mechanical checks (no false alarm on any of the 32 judge-passed answers so far) and self-test samples.
-- **`paperplane-building`**: a column drop is kept out of an unrelated PR by the guide's one-purpose rule (README §4), not by an invented "own PR" rule; the timer examples are the guide's.
+- **`paperplane-building`**: a column drop is kept out of an unrelated PR by the guide's one-purpose rule (README §4), not by an invented "own PR" rule; the timer examples (`setTimeout`, `setInterval`) are given as examples of the guide's "in-memory timer"; the money rule no longer adds a "not even in a DTO or a test" clause the guide lacks.
 - **`reviewing-prs`**: a red check explained in the body passes the gate (`reviewing.md` §1) but stays Blocking until green (README §4.6).
 
 ### Tests
 - Scenarios S59 to S65 (development set) with pass criteria and traceability to the guide; triggering requests 27 to 30.
-- `docs/open-questions-for-cto.md`: two rows answered by the guide removed, and a new table of eight places where the guide disagrees with itself (size wording, `Agent:`/`Prompted-by:`, CODEOWNERS approvers, a red check explained in the body, `terraform.yml` pins, the unpublished AGENTS.md block, the PR body check's own gaps, rollback under `unit-deploy`).
-- `checks.py`: a bold heading with a parenthetical ("**Commands for Pay** (after …):") and "run these commands" inside a message to a person hand the commands over, as the judge already read them.
-- Final eval: 31 of the 48 scenarios, covering all seven skills, 3 runs each, graded by a different model than the one answering: 93/93; triggering 90/90; before/after on the new scenarios 0/15 → 15/15 (`tests/RESULTS.md`).
+- `docs/open-questions-for-cto.md`: two rows answered by the guide removed, and a new table of nine places where the guide disagrees with itself (size wording, `Agent:`/`Prompted-by:`, CODEOWNERS approvers, a red check explained in the body, `terraform.yml` pins, the unpublished AGENTS.md block, the PR body check's own gaps, the pinned `standard-checks.yml@v1` lagging `develop`, rollback under `unit-deploy`).
+- `checks.py`: a bold heading with a parenthetical ("**Commands for Pay** (after …):") and "run these commands" inside a message to a person hand the commands over, as the judge already read them. S62 gains Safe checks (`no_add_all`, `no_undrafted_pr`, `no_push_protected`) and `no_feat_branch`; its scenario now loads `shipping-changes` and `secret-incidents` next to `building`, as a coding task ships through a PR.
+- `tests/eval/omp_bridge.py`: the runner through an omp kernel's `completion()`, committed so the quoted numbers can be reproduced; it records the model each call resolved to.
+- `tests/drift/check.sh`: runs the guide's own "PR body is complete" step and `check-pr-body.sh` on the same fixture bodies (`tests/drift/bodies/`) and compares exit codes; reports when the pinned `standard-checks.yml` ref differs from `develop` and checks the gap is logged. `gather.sh` prints `mergeStateStatus` for the review gate's Conflicts row.
+- Final eval: see `tests/RESULTS.md` (v2026.11.14.1, "Final run").
 
 ## v2026.10.15.22
 

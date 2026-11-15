@@ -41,7 +41,7 @@ unavailable() { echo "unavailable: $(printf '%s' "$1" | tr '\n' ' ' | cut -c1-30
 # Every line of multi-line untrusted text starts with "|", so none of it can pose as a "== section ==" or a field.
 quoted() { printf '%s\n' "$1" | sed 's/^/| /; s/^| $/|/'; }
 
-meta=$(gh pr view "$pr" -R "$repo" --json number,title,url,author,state,isDraft,baseRefName,headRefName,additions,deletions,changedFiles,isCrossRepository,headRepositoryOwner --jq '
+meta=$(gh pr view "$pr" -R "$repo" --json number,title,url,author,state,isDraft,baseRefName,headRefName,additions,deletions,changedFiles,isCrossRepository,headRepositoryOwner,mergeStateStatus --jq '
   "PR #\(.number) in '"$repo"'",
   "title: \(.title | gsub("[\r\n]+"; " "))",
   "url: \(.url)",
@@ -51,6 +51,7 @@ meta=$(gh pr view "$pr" -R "$repo" --json number,title,url,author,state,isDraft,
   "base: \(.baseRefName)",
   "head: \(.headRefName)",
   "size: +\(.additions) -\(.deletions) in \(.changedFiles) files",
+  "merge state: \(.mergeStateStatus)",
   (if .isCrossRepository then "fork: yes, head repo owner is \(.headRepositoryOwner.login // "unknown")" else empty end)' 2>&1) || {
   echo "cannot read PR #$pr in $repo: $(printf '%s' "$meta" | tr '\n' ' ')"
   echo "check the number, the repo, and 'gh auth status'"

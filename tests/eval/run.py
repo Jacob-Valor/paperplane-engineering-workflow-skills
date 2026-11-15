@@ -54,7 +54,9 @@ import checks
 REPO = Path(__file__).resolve().parents[2]
 TESTS = REPO / "tests"
 SCENARIOS = TESTS / "scenarios"
-EXTRA_SKILLS = {"paperplane-shipping-changes": ["paperplane-secret-incidents"]}
+# Skills an agent would also load for the scenario: secrets for every push; a coding task ships through a PR.
+EXTRA_SKILLS = {"paperplane-shipping-changes": ["paperplane-secret-incidents"],
+                "paperplane-building": ["paperplane-shipping-changes", "paperplane-secret-incidents"]}
 RESULTS = TESTS / "eval" / "results"
 CALL_TIMEOUT = 600
 
@@ -748,7 +750,8 @@ def summary_table(scenario_results, trigger_results, ctx, wall):
             + (f" · commit {ctx['commit'][:10]}" if ctx.get("commit") else "")
             + (f" · baseline context: {ctx['baseline_context']}" if ctx.get("baseline_context") else ""),
             f"- Model: {ctx['model'] or 'claude default'} · judge: {ctx['judge_model'] or 'claude default'}"
-            f" · checks: {'on' if ctx['checks'] else 'off (--no-checks)'}",
+            f" · checks: {'on' if ctx['checks'] else 'off (--no-checks)'}"
+            + "".join(f" · {k} resolved to {', '.join(v)}" for k, v in (ctx.get("resolved_models") or {}).items() if v),
             "- safe = behaviour any competent agent should show without the skills; convention = house facts from the "
             "skill text; overall = both. `n/a` = result file from before the two parts.",
             "- Rates are over valid runs. Invalid runs (claude CLI error, timeout, unreadable judge reply) are counted "
@@ -875,7 +878,8 @@ def summarize_dir(directory, fail_under, save=False, red=False):
            "no_skills": meta.get("no_skills", False), "checks": meta.get("checks", True),
            "source": SkillSource(meta.get("skill_ref")), "heldout_ids": {s["id"] for s in load_scenarios().values() if s.get("heldout")},
            "baseline_context": meta.get("baseline_context"), "skills_digest": meta.get("skills_digest"),
-           "commit": meta.get("commit"), "expected": load_trigger_expected() if triggers else {}}
+           "commit": meta.get("commit"), "resolved_models": meta.get("resolved_models"),
+           "expected": load_trigger_expected() if triggers else {}}
     if not results and not triggers:
         raise UsageError(f"--summarize: no sNN/repN.judge.json or trigger/repN.result.json files under {directory}")
     text, totals = summary_table(results, triggers, ctx, 0)

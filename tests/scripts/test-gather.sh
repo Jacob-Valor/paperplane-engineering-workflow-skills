@@ -72,7 +72,7 @@ export PATH="$work/bin:$PATH"
 pr_json() { # pr_json <n> <draft> <base> <head> <body>
   cat > "$F/pr-$1.json" <<EOF
 {"number":$1,"title":"feat(otp): pr $1","url":"https://github.com/paperplanehq/demo/pull/$1",
- "author":{"login":"alice"},"state":"OPEN","isDraft":$2,"baseRefName":"$3","headRefName":"$4",
+ "author":{"login":"alice"},"state":"OPEN","isDraft":$2,"baseRefName":"$3","headRefName":"$4","mergeStateStatus":"CLEAN",
  "additions":12,"deletions":3,"changedFiles":2,"body":$(printf '%s' "$5" | jq -Rs .),
  "commits":[{"authors":[{"login":"alice","name":"Alice","email":"a@x"}]},
             {"authors":[{"login":"","name":"Bot Box","email":"bot@x"},{"login":"alice","name":"Alice","email":"a@x"}]}]}
@@ -90,6 +90,7 @@ pr_json 13 false feature/b feature/c ""
 pr_json 14 false develop fix/lint "x"
 printf 'standard / lint\tfail\t9s\thttps://ci/2\nstandard / test\tpending\t0\thttps://ci/3\n' > "$F/checks-14.txt"; echo 1 > "$F/checks-14.rc"
 rm "$F/threads-14.json"
+jq -c '.mergeStateStatus = "DIRTY"' "$F/pr-14.json" > "$F/t" && mv "$F/t" "$F/pr-14.json"
 echo '[{"number":12,"title":"feat(a): base","isDraft":true,"baseRefName":"develop"}]' > "$F/head-feature_a-base.json"
 echo '[{"number":11,"title":"feat(b): middle","isDraft":false,"baseRefName":"feature/a-base"}]' > "$F/head-feature_b.json"
 echo '{"nameWithOwner":"paperplanehq/demo"}' > "$F/repo.json"
@@ -100,6 +101,9 @@ expect "normal PR" 0 bash "$G" 10 paperplanehq/demo
 has    "normal: header" '^PR #10 in paperplanehq/demo$'
 has    "normal: draft state and base" '^isDraft: false$'
 has    "normal: size" '^size: \+12 -3 in 2 files$'
+has    "normal: merge state" '^merge state: CLEAN$'
+if grep -qE '^pr view 10 .*--json [^ ]*mergeStateStatus' "$F/calls"; then pass=$((pass+1)); echo "ok   normal: mergeStateStatus is requested"
+else fail=$((fail+1)); echo "FAIL normal: gh pr view --json does not ask for mergeStateStatus"; fi
 has    "normal: body quoted verbatim" '^\| Fix OTP timeout\.$'
 has    "normal: checks listed" 'standard / lint.*pass'
 lacks  "normal: no failing-checks note" 'gh pr checks exit'
@@ -129,6 +133,7 @@ has    "deep stack: depth 3 or more" '^depth: 3 or more'
 expect "failing checks do not abort" 0 bash "$G" 14 paperplanehq/demo
 has    "failing checks: listed" 'standard / lint.*fail'
 has    "failing checks: noted" 'gh pr checks exit 1'
+has    "conflicting PR: merge state DIRTY" '^merge state: DIRTY$'
 has    "failing checks: later sections still print" '^== Diff ==$'
 printf 'standard / checks\tpass\t40s\thttps://ci/4\nstandard / AI review (advisory)\tfail\t1m\thttps://ci/5\n' > "$F/checks-14.txt"
 expect "advisory-only red does not abort" 0 bash "$G" 14 paperplanehq/demo --no-diff

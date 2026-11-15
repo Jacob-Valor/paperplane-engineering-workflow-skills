@@ -42,7 +42,7 @@ Give each one **PASS**, **FAIL** or **ASK** (only the author can answer), with t
 4. **UI text.** In every added line a user can read: no emoji and no symbol used as an icon (`★ ♡ ♥ • ✓ →`). Swapping one symbol for another is still FAIL. Every new string key exists in every locale file of the repo, with the same placeholders.
 5. **The whole class.** When the title or body says "all", "every", "the whole feature" or names a flow, grep for the siblings (same component, prop, icon name, label key, field) and list each as changed or left. FAIL when one is left and the body does not say it is on purpose.
 6. **Shared components.** When the diff touches a shared primitive (anything under a shared `ui` or `components` folder used by more than one feature): the new behaviour is opt-in (a prop with the old default), and the body names the other call sites that were checked. List the call sites you found. FAIL when a default changes for every caller.
-7. **Body matches the diff, and the device lines are finished.** Counts, file names and claims in the body agree with the diff. App repo: `- iOS:` and `- Android:` each name a device and a result, or say `not a mobile change`; a line that starts with pending, todo, TBD, not verified or not tested is FAIL (CI fails a ready PR that says so), and a mobile or UI change with no screenshot or recording per platform is FAIL. You cannot run a device: ASK the author what they saw, and never fill those lines yourself.
+7. **Body matches the diff, and the device lines are finished.** Counts, file names and claims in the body agree with the diff. App repo: `- iOS:` and `- Android:` each name a device and a result, or say `not a mobile change`; a line that starts with pending, todo, TBD, not verified or not tested is FAIL (guide §4: "pending" means the PR is still a draft; CI on the guide's `develop` fails it, while a repo pinned to an older `standard-checks.yml` tag may not yet, so do not count on CI), and a mobile or UI change with no screenshot or recording per platform is FAIL. You cannot run a device: ASK the author what they saw, and never fill those lines yourself.
 
 ## 3. Report
 
@@ -62,7 +62,7 @@ One table, most serious first, then one line:
 | Excuse | Reality |
 |---|---|
 | "The code is good, the rest is paperwork" | A reviewer sends it back for the same reason. Do not soften a FAIL. |
-| "Mark it ready now, Android follows tonight" | A pending line means draft, and CI fails a ready PR that says so. |
+| "Mark it ready now, Android follows tonight" | A pending line means draft (guide §4), whether or not the repo's CI catches it yet. |
 | "I replaced the ★ with a ✓" | Still a symbol. Use a word. |
 | "That other list is a different component" | "Every list" means every list. Change it, or the body says it is left out on purpose. |
 | "The bigger badge looks better everywhere" | A shared default change reaches every caller. Make it opt-in and name the screens checked. |

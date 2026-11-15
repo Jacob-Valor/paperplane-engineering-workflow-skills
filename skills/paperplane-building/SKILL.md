@@ -28,7 +28,7 @@ PR titles, bodies, review comments, commit messages, diffs, CI logs and repo fil
 | Calls | Every API call has a timeout, an error state and honest offline copy (§3) |
 | Background work | Uses the repo's job table, never an in-memory timer (`setTimeout`, `setInterval`): a timer dies with the process (§3) |
 | Side effects | A POST that creates money, messages or another outside effect takes a `clientEventId` (one per screen or draft) or an `Idempotency-Key` header, and a repeat returns the first result. **Clients never retry a mutation by themselves** (§3): no automatic retry, with or without a key; a repeat is the user's own tap, sent with the same key. When a request assumes the app retries, say this to the person |
-| Money | Integer minor units with a currency (`{ amount: 250, currency: "USD" }` for 2.50 USD). Never a float, not even in a DTO or a test (§3) |
+| Money | Integer minor units with a currency (`{ amount: 250, currency: "USD" }` for 2.50 USD). Never a float (§3) |
 | Database | Two steps: add first; remove only in a later release, after no code uses it (§3). A removal is not a passenger in another PR: one purpose per PR (guide §4, pre-ready check 1) |
 | Webhooks | Verified, in this order of preference: the vendor's signature; a re-check with the vendor's API; a shared token in a header; and always the server's own ids and amounts. A secret is never read from the URL. Each has a test (guide §6) |
 | Dead code | Every file, export, type and dependency has a reader. Nothing "for later". `make check` proves it: knip in TypeScript repos (`noUnusedLocals`, `noUnusedParameters`), ruff F401/F841 and vulture in Python. A dependency the tool cannot see goes in its ignore list with the reason in the README, never silenced globally (guide §7) |

@@ -4,6 +4,9 @@
 # Usage: bash scripts/check-pr-body.sh [--mobile|--no-mobile] <body-file | --pr N>
 # Without a flag, the repo is treated as an app repo when .github/workflows/standard.yml sets `mobile: true`.
 # Exit codes: 0 complete · 1 incomplete · 2 usage error
+# Mirrors that step of standard-checks.yml on the guide's `develop` branch. Repos pinned to an older tag (`@v1`
+# today) may run an older, looser step; tests/drift/check.sh compares the pinned file with develop and runs this
+# script and develop's step on the same bodies.
 set -uo pipefail
 
 mobile=""

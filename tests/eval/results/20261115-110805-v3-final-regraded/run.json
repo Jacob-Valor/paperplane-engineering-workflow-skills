@@ -1,0 +1,65 @@
+{
+  "argv": [
+    "tests/eval/omp_bridge.py"
+  ],
+  "skill_ref": null,
+  "no_skills": false,
+  "model": "omp completion:default",
+  "judge_model": "omp completion:slow",
+  "checks": true,
+  "baseline_context": null,
+  "fail_under": 1.0,
+  "scenarios": [
+    "s4",
+    "s10",
+    "s19",
+    "s22",
+    "s23",
+    "s41",
+    "s52",
+    "s53",
+    "s59",
+    "s60",
+    "s5",
+    "s18",
+    "s43",
+    "s57",
+    "s63",
+    "s6",
+    "s13",
+    "s17",
+    "s55",
+    "s1",
+    "s9",
+    "s11",
+    "s50",
+    "s51",
+    "s64",
+    "s65",
+    "s15",
+    "s16",
+    "s54",
+    "s61",
+    "s62"
+  ],
+  "reps": 3,
+  "trigger": true,
+  "skills_digest": "38f934c9a7b1",
+  "commit": "8b303c55c190bca0bfd765c0e31784ee70681a84",
+  "tree_dirty": true,
+  "resolved_models": {
+    "answer": [
+      "anthropic/claude-opus-5-5"
+    ],
+    "judge": [
+      "commandcode/deepseek/deepseek-v4.1-flash-ultrafast"
+    ]
+  },
+  "regraded_from": "20261115-110805-v3-final",
+  "note": "same answers as the source run, every one re-graded once with the corrected S1/S43/S61 criteria and checks",
+  "totals": {
+    "valid": 183,
+    "passed": 179,
+    "invalid": 0
+  }
+}
