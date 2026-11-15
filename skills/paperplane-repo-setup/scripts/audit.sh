@@ -107,7 +107,8 @@ other=$(printf '%s\n' "$root" | grep -xE 'package-lock\.json|yarn\.lock|bun\.loc
 if [ -z "$other" ]; then report PASS pnpm-only "no npm/yarn/bun lockfile $on"
 else report FAIL pnpm-only "remove $other $on (pnpm only)"; fi
 
-# CODEOWNERS (GitHub reads .github/, the root or docs/): every rule names at least two @owners.
+# CODEOWNERS (GitHub reads .github/, the root or docs/): every rule names a real @owner, not the template's
+# placeholder (@pay-tbd). One owner is a WARN: until a unit has a second approver, the CTO is the only one.
 cpath=""
 if has "$dotgithub" CODEOWNERS; then cpath=.github/CODEOWNERS
 elif has "$root" CODEOWNERS; then cpath=CODEOWNERS
@@ -117,15 +118,20 @@ if [ -z "$cpath" ]; then
 elif ! owners=$(raw "$cpath"); then
   report FAIL codeowners "cannot read $cpath: $(lasterr)"
 else
-  rules=0 thin=""
+  rules=0 none="" tbd="" single=""
   while read -r pattern rest; do
     [ -n "$pattern" ] || continue
     rules=$((rules+1))
-    n=$(printf '%s\n' "$rest" | tr -s ' \t' '\n\n' | grep -c '^@')
-    [ "$n" -ge 2 ] || thin="$thin $pattern"
-  done < <(printf '%s\n' "$owners" | nocomments)
+    ow=$(printf '%s\n' "$rest" | tr -s ' \t' '\n\n' | grep '^@')
+    ph=$(printf '%s\n' "$ow" | grep -iE -- '-tbd$' | paste -sd, -)
+    if [ -z "$ow" ]; then none="$none $pattern"
+    elif [ -n "$ph" ]; then tbd="$tbd $pattern ($ph)"
+    elif [ "$(printf '%s\n' "$ow" | wc -l)" -eq 1 ]; then single="$single $pattern"; fi
+  done < <(printf '%s\n' "$owners" | tr -d '\r' | nocomments)
   if [ "$rules" -eq 0 ]; then report FAIL codeowners "no rules in $cpath"
-  elif [ -n "$thin" ]; then report FAIL codeowners "fewer than two @owners for:$thin"
+  elif [ -n "$none$tbd" ]; then
+    report FAIL codeowners "$cpath:${none:+ no @owner for:$none;}${tbd:+ placeholder owner for:$tbd;} name the real approver (the CTO until the unit has a lead)"
+  elif [ -n "$single" ]; then report WARN codeowners "$cpath: one @owner for:$single; add a second code owner when the unit has one"
   else report PASS codeowners "$cpath: $rules rule(s), each with two or more @owners"; fi
 fi
 if cerr=$(api "repos/$repo/codeowners/errors?ref=$ref" --jq '(.errors | length), (.errors[0] // {} | "\(.path // "?"):\(.line // "?") \(.message // .kind // "")" | gsub("\\s+"; " "))'); then
@@ -134,8 +140,11 @@ if cerr=$(api "repos/$repo/codeowners/errors?ref=$ref" --jq '(.errors | length),
   else report FAIL codeowners-errors "$ncerr error(s), first: $(printf '%s\n' "$cerr" | sed -n 2p | cut -c1-160); code-owner review is required, so an unresolved owner blocks or skips review requests"; fi
 else report WARN codeowners-errors "cannot read codeowners/errors: $(lasterr)"; fi
 
-# Standard CI workflow.
-want=paperplanehq/paperplane-engineering/.github/workflows/standard-checks.yml@develop
+# Standard CI workflow, pinned to a version tag of the guide (templates/standard.yml pins @v1; conformance C01).
+# tests/drift/check.sh reads pin_re from this line and checks the template's pin against it.
+pin_re='v[0-9]+(\.[0-9]+)*'
+want=paperplanehq/paperplane-engineering/.github/workflows/standard-checks.yml
+pinfix="copy the @v1 pin from the guide's templates/standard.yml"
 if ! wf=$(raw .github/workflows/standard.yml); then
   if grep -q 'HTTP 404' "$err"; then report FAIL standard-workflow "missing .github/workflows/standard.yml $on"
   else report FAIL standard-workflow "cannot read .github/workflows/standard.yml $on: $(lasterr)"; fi
@@ -167,9 +176,9 @@ else
     top == "concurrency" && ind > 0 && t ~ /^cancel-in-progress:[ ]*["\047]?true["\047]?[ ]*$/ { conc = 1 }
     END { printf "rfr=%d conc=%d\n", rfr, conc }')
   uses=$(printf '%s\n' "$wf" | grep -oE 'uses:[[:space:]]*["'\'']?[^"'\''[:space:]]*standard-checks\.yml[^"'\''[:space:]]*' | sed -E 's/uses:[[:space:]]*["'\'']?//' | head -1)
-  if [ "$uses" = "$want" ]; then report PASS standard-workflow "calls $want"
-  elif [ -n "$uses" ]; then report FAIL standard-workflow "calls $uses, want $want"
-  else report FAIL standard-workflow "does not call $want"; fi
+  if [ "${uses%@*}" = "$want" ] && [[ "${uses##*@}" =~ ^($pin_re)$ ]]; then report PASS standard-workflow "calls standard-checks.yml@${uses##*@}"
+  elif [ -n "$uses" ]; then report FAIL standard-workflow "calls $uses, want $want@v<N>; $pinfix"
+  else report FAIL standard-workflow "does not call $want@v<N>; $pinfix"; fi
   if [ "${flags#rfr=1}" != "$flags" ]; then report PASS standard-ready_for_review "pull_request types include ready_for_review"
   else report WARN standard-ready_for_review "pull_request types lack ready_for_review; draft PRs marked ready skip CI (template change pending)"; fi
   if [ "${flags% conc=1}" != "$flags" ]; then report PASS standard-concurrency "cancels the previous run of the same PR"

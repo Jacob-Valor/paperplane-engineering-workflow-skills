@@ -56,16 +56,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Not a job name
+  conformance:
+    name: conformance
+    runs-on: ubuntu-latest
   ai-review:
     name: AI review (advisory)
     runs-on: ubuntu-latest
 EOF
+  # The CI step's pending regex, as the guide writes it (single-quoted grep -Eqi on the device line).
+  re=$(sed -n "s/^pending_re='\(.*\)'.*/\1/p" "$work/skills/paperplane-shipping-changes/scripts/check-pr-body.sh")
+  printf "      - name: PR body is complete\n        run: |\n          if printf '%%s' \"\$line\" | sed -e 's/^[*_\`[:space:]]*//' | grep -Eqi '%s'; then fail=1; fi\n" "$re" >> "$FAKE_GH/files/.github/workflows/standard-checks.yml"
   {
     printf '## How I verified it\n- Commands:\n- iOS:\n- Android:\n\n## Checklist\n'
     for _ in 1 2 3 4 5 6 7; do echo '- [ ] item'; done
     printf '\nAI-assisted: yes / no\n'
   } > "$FAKE_GH/files/templates/pull_request_template.md"
-  printf 'on:\n  pull_request:\n    types: [opened, edited, synchronize, reopened]\n' > "$FAKE_GH/files/templates/standard.yml"
+  printf 'on:\n  pull_request:\n    types: [opened, edited, synchronize, reopened]\njobs:\n  standard:\n    uses: paperplanehq/paperplane-engineering/.github/workflows/standard-checks.yml@v1\n' > "$FAKE_GH/files/templates/standard.yml"
   sed -i.bak 's/all [0-9]* boxes/all 7 boxes/' "$work/skills/paperplane-shipping-changes/SKILL.md"
   commit README.md 2026-10-12T09:00:00Z "docs: older change"
   commit templates 2026-10-13T05:39:07Z "docs(workflow): newest change"
@@ -114,11 +120,36 @@ commit README.md 2026-10-13T23:00:00Z "docs: same day"
 expect "same-day guide commit is not drift" 0 bash "$C"
 
 setup
-printf 'on:\n  pull_request:\n    types: [opened, ready_for_review]\n' > "$FAKE_GH/files/templates/standard.yml"
+printf 'on:\n  pull_request:\n    types: [opened, ready_for_review]\njobs:\n  standard:\n    uses: paperplanehq/paperplane-engineering/.github/workflows/standard-checks.yml@v1\n' > "$FAKE_GH/files/templates/standard.yml"
 grep -v ready_for_review "$SKILLS_DIR/paperplane-repo-setup/SKILL.md" > t && mv t "$SKILLS_DIR/paperplane-repo-setup/SKILL.md"
 expect "ready_for_review unexplained by repo-setup is drift" 1 bash "$C"
 echo 'Trigger on ready_for_review too.' >> "$SKILLS_DIR/paperplane-repo-setup/SKILL.md"
 expect "ready_for_review explained by repo-setup passes" 0 bash "$C"
+
+setup
+expect "template pin accepted by audit.sh passes" 0 bash "$C"
+says "pin OK line" '^OK +standard\.yml pin +template pins @v1; audit.sh accepts it'
+says "pending regex OK line" '^OK +pending regex +check-pr-body\.sh matches standard-checks\.yml'
+sed -i.bak 's/@v1$/@develop/' "$FAKE_GH/files/templates/standard.yml"
+expect "template pin audit.sh rejects is drift" 1 bash "$C"
+says "drift names the template pin" '^DRIFT +standard\.yml pin +templates/standard\.yml pins @develop; .*audit\.sh accepts only'
+sed -i.bak 's/@develop$/@v3/' "$FAKE_GH/files/templates/standard.yml"
+expect "a new major pin is still accepted" 0 bash "$C"
+
+setup
+sed -i.bak "s/^pin_re=.*/want_ref=develop/" "$SKILLS_DIR/paperplane-repo-setup/scripts/audit.sh"
+expect "audit.sh without pin_re is drift" 1 bash "$C"
+says "drift says pin_re is gone" "^DRIFT +standard\.yml pin +no pin_re="
+
+setup
+sed -i.bak 's/|tbd|/|tbd|wip|/' "$FAKE_GH/files/.github/workflows/standard-checks.yml"
+expect "CI pending regex changed is drift" 1 bash "$C"
+says "drift shows both regexes" "^DRIFT +pending regex +standard-checks\.yml has '.*\|wip\|.*'; .*check-pr-body\.sh has"
+
+setup
+grep -v 'grep -Eqi' "$FAKE_GH/files/.github/workflows/standard-checks.yml" > t && mv t "$FAKE_GH/files/.github/workflows/standard-checks.yml"
+expect "CI pending check gone is drift" 1 bash "$C"
+says "drift says the step changed" '^DRIFT +pending regex +no grep -Eqi'
 
 setup
 : > "$FAKE_GH/noaccess"

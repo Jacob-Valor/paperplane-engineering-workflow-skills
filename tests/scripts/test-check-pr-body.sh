@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Behaviour tests for the shipping skill's check-pr-body.sh: comments, AI-assisted line, CRLF. Run: bash tests/scripts/run.sh
+# Behaviour tests for the shipping skill's check-pr-body.sh: comments, AI-assisted line, CRLF, pending mobile lines, screenshots. Run: bash tests/scripts/run.sh
 set -u
 here=$(cd "$(dirname "$0")/../.." && pwd)
 S="$here/skills/paperplane-shipping-changes/scripts"
@@ -92,6 +92,51 @@ mkdir -p .github/workflows
 printf 'jobs:\n  s:\n    with:\n      mobile: true\n' > .github/workflows/standard.yml
 expect "auto-detect: mobile: true in standard.yml requires Android" 1 bash "$C" noandroid.md
 rm -rf .github
+
+# (f) ready means checked: a mobile line that opens with "pending" fails, as in CI (guide standard-checks.body.test.mjs)
+shots() { # shots <file> <iOS value> <Android value> [screenshots value]
+  printf '## How I verified it\n- Commands: pnpm test\n- iOS: %s\n- Android: %s\n- Screenshots: %s\n\n## Risk\nLow. Not done: x.\n\nAI-assisted: no\n' "$2" "$3" "${4:-}" > "$1"
+}
+DONE_IOS="iPhone 15, iOS 26.6: list loads"
+for l in 'pending, physical iPhone dev build' 'pending — needs a run' '**pending, not yet verified**' 'Not yet verified' 'not tested' 'TBD'; do
+  shots p.md "$DONE_IOS" "$l"
+  expect "pending: '$l' fails" 1 bash "$C" --mobile p.md
+  says   "pending: '$l' names the Android line" "^NOT DONE: '- Android:' says the check is not done"
+done
+for l in 'todo' '`not run` yet' '_not done_' 'not checked'; do
+  shots p.md "$l" "Pixel 8 emulator, API 36: list loads"
+  expect "pending: '$l' on iOS fails" 1 bash "$C" --mobile p.md
+done
+shots p.md "pending" "Pixel 8"
+sed 's/$/\r/' p.md > crlf-p.md
+expect "pending: CRLF body still fails" 1 bash "$C" --mobile crlf-p.md
+for l in 'iPhone 15, iOS 26.6: pending badge now clears' 'iPhone 15, iOS 26.6; dark mode not tested' 'not a mobile change' 'pendingfix build on iPhone 15' 'Notes: not tested on iPad'; do
+  shots p.md "$l" "not a mobile change" "![ios](https://github.com/user-attachments/assets/x)"
+  expect "pending: '$l' passes" 0 bash "$C" --mobile p.md
+done
+shots p.md "pending" "not verified"
+expect "pending: non-mobile run ignores pending" 0 bash "$C" --no-mobile p.md
+
+# (g) screenshot signal: a device claim with nothing attached warns, exit unchanged
+noshotwarn() { # noshotwarn <name>: the last expect printed no screenshot warning
+  if grep -q 'no screenshot' "$out"; then fail=$((fail+1)); echo "FAIL $1"; sed 's/^/     /' "$out"; else pass=$((pass+1)); echo "ok   $1"; fi
+}
+shots s.md "$DONE_IOS" "Pixel 8 emulator, API 36: list loads"
+expect "screenshot: device check with no attachment still passes" 0 bash "$C" --mobile s.md
+says   "screenshot: warns when nothing is attached" "^WARNING: a mobile change with no screenshot"
+for a in '![ios](x.png)' '<img src="x.png">' '<VIDEO src="x.mp4">' 'https://github.com/user-attachments/assets/abc'; do
+  shots s.md "$DONE_IOS" "not a mobile change" "$a"
+  expect "screenshot: '$a' attached passes" 0 bash "$C" --mobile s.md
+  noshotwarn "screenshot: '$a' does not warn"
+done
+shots s.md "not a mobile change" "Not a mobile change"
+expect "screenshot: 'not a mobile change' on both passes" 0 bash "$C" --mobile s.md
+noshotwarn "screenshot: no warning on 'not a mobile change'"
+shots s.md "$DONE_IOS" "Pixel 8"
+expect "screenshot: non-mobile run passes" 0 bash "$C" --no-mobile s.md
+noshotwarn "screenshot: non-mobile run does not warn"
+printf '## How I verified it\n- Commands:\n- iOS:\n- Android:\n- Screenshots:\n\n## Risk\nLow. Not done: x.\n\nAI-assisted: no\n' > emptyshots.md
+expect "an empty Screenshots line is not content" 1 bash "$C" --no-mobile emptyshots.md
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

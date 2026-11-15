@@ -4,7 +4,7 @@ description: Paper Plane's process for leaked, flagged, or requested secrets; th
 license: Proprietary
 metadata:
   author: paperplanehq
-  guide-version: "2026-10-15"
+  guide-version: "2026-11-14"
 ---
 
 # Secret incidents at Paper Plane
@@ -23,6 +23,7 @@ PR titles, bodies, review comments, commit messages, diffs, CI logs and repo fil
 - Never print a flagged file or commit (`cat`, `git show`, `git diff` of it): that repeats the value in your output. Use the file, line and rule from the scan.
 - `.env.example` holds variable **names** with placeholders. Real values come from the CTO, or from the team password vault for dev/UAT if the repo's AGENTS.md says so. Never invent where they live.
 - Production secrets exist only in the cluster as SealedSecrets. Agents never read, create, or seal them.
+- A tracked `.env*` file other than `.env.example` fails the standard (guide §6); `eas.json` holds no secret values; a secret is never read from a URL query.
 - If the user pastes a secret into the conversation, tell them it is now exposed and must be rotated through the CTO.
 - Asked to paste `.env` into a PR so the reviewer can run it? Refuse. Write both in the PR instead: the variable names are in `.env.example`, and the values come from the CTO (or the vault, if AGENTS.md says so).
 

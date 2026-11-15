@@ -118,6 +118,14 @@ expect "body: empty Android line, app repo" 1 bash "$S/check-pr-body.sh" --mobil
 expect "body: empty Android line, backend repo" 0 bash "$S/check-pr-body.sh" --no-mobile no-android.md
 expect "body: AI-assisted placeholder" 1 bash "$S/check-pr-body.sh" --no-mobile placeholder.md
 expect "body: empty Risk" 1 bash "$S/check-pr-body.sh" --no-mobile no-risk.md
+sed -e 's/^- iOS: .*/- iOS: pending/' -e 's/^- Android: .*/- Android: not verified yet/' good.md > pending.md
+expect "body: 'pending' / 'not verified yet' device lines, app repo" 1 bash "$S/check-pr-body.sh" --mobile pending.md
+grep -q "^NOT DONE: '- iOS:'" /tmp/pp-test-out.$$ && grep -q "^NOT DONE: '- Android:'" /tmp/pp-test-out.$$ \
+  && { pass=$((pass+1)); echo "ok   body: names both pending lines"; } || { fail=$((fail+1)); echo "FAIL body: names both pending lines"; sed 's/^/     /' /tmp/pp-test-out.$$; }
+expect "body: pending device lines, backend repo" 0 bash "$S/check-pr-body.sh" --no-mobile pending.md
+expect "body: device lines without a screenshot still pass" 0 bash "$S/check-pr-body.sh" --mobile good.md
+grep -q '^WARNING: a mobile change with no screenshot' /tmp/pp-test-out.$$ \
+  && { pass=$((pass+1)); echo "ok   body: warns about the missing screenshot"; } || { fail=$((fail+1)); echo "FAIL body: warns about the missing screenshot"; sed 's/^/     /' /tmp/pp-test-out.$$; }
 mkdir -p .github/workflows; printf 'jobs:\n  standard:\n    with:\n      mobile: true\n' > .github/workflows/standard.yml
 expect "body: app repo detected from standard.yml" 1 bash "$S/check-pr-body.sh" no-android.md
 expect "body: usage error" 2 bash "$S/check-pr-body.sh"

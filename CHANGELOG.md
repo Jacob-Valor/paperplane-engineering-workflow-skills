@@ -2,6 +2,33 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.11.14.1
+
+Matches the guide of 2026-11-14 (standard v2, v2.1, v2.2 and `reviewing.md`). Before: 2026-10-15.
+
+### Added: two skills
+- **`paperplane-pr-ready`**: the guide's seven-check pre-ready audit (§4) for every agent, not only Claude Code's `/pr-ready` template. PASS/FAIL/ASK table with evidence, then "Keep as draft. Fix:" or ready; runs `check-pr-body.sh` for check 7; never marks ready, pushes, edits the body or fills a device line. `shipping-changes` step 7 now runs it before `gh pr ready`.
+- **`paperplane-building`**: `building.md` plus guide §6–8 coding rules: route schemas and committed `docs/openapi.json`, `make types`, no breaking API change, job table not timers, `clientEventId`/`Idempotency-Key` and no client retries, money in integer minor units, two-step database changes, webhook verification order, no dead code (knip, ruff, vulture), the tests table and the fresh-clone check.
+
+### Changed: skills to guide v2.2
+- **`reviewing-prs`** follows `reviewing.md`: a gate (now with conflicts and `standard / conformance`), the eight points (security and data safety are new: route guards, bounded `WHERE`, backfills safe to run twice), deeper-review areas, a weight on every finding (Blocking, Should fix, Nit) and an evidence tag (Reproduced, From code). Verdict word **"Changes requested"** (was "Changes needed"), with the reasons Split, Needs device check and Duplicate; a duplicate search in Gather. A unit without a second code owner has the CTO as its only approver. Leftovers are guide §7 now, no longer a team convention.
+- **`repo-setup`**: `standard.yml` pins `standard-checks.yml@v1`; new section **Standard v2 conformance** (`.paperplane.yml` with `enforce: false`, the org checker run in the clone, every conformance id with who owns it, §8 files left to the CTO); the AGENTS.md standard block is copied from a sibling found by `gh search code` or asked from the CTO, never written by the agent; CODEOWNERS replaces `@pay-tbd` with two handles from the CTO, one only when the unit has no second approver.
+- **`releasing`**: tag rulesets are per unit (`release-tags-<unit>`); in a `unit-deploy` repo a push to `uat` deploys UAT and a pushed `prod-*` tag deploys production.
+- **`shipping-changes`**: the checklist has 10 boxes; dead code is guide §7.
+- **`secret-incidents`**: a tracked `.env*` other than `.env.example` fails the standard; `eas.json` holds no secrets; no secret in a URL query.
+- Not changed, on purpose: re-requesting review and not pushing to a merged branch. Baselines already passed S64 and S65 (`tests/RESULTS.md`).
+
+### Fixed
+- **`check-pr-body.sh`** passed a ready app-repo body whose `- iOS:`/`- Android:` line said "pending" or "not verified yet"; CI fails it. It now uses CI's regex verbatim, warns like CI when a mobile change has no screenshot or recording, and ignores an empty `- Screenshots:` line.
+- **`audit.sh`** failed every repo copied from the current template: it wanted `standard-checks.yml@develop`; it now wants `@v<N>`. CODEOWNERS: FAIL for no owner or a `-tbd` placeholder, WARN for one owner (was FAIL under two).
+- **`tests/drift/check.sh`**: two new checks, the template's `standard-checks.yml@vN` against `audit.sh`'s pattern and CI's pending regex against `check-pr-body.sh`'s.
+- **`run.py --summarize`** labelled a `--skill-ref` run as "working tree".
+- **Eval**: `checks.py` accepts "Changes requested" as well as "Changes needed"; eight criteria rows say the same.
+
+### Tests
+- Scenarios S59 to S65 (development set) with pass criteria and traceability to the guide; triggering requests 27 to 30.
+- `docs/open-questions-for-cto.md`: two rows answered by the guide removed, and a new table of six places where the guide disagrees with itself (size wording, `Agent:`/`Prompted-by:`, CODEOWNERS approvers, `terraform.yml` pins, the unpublished AGENTS.md block, rollback under `unit-deploy`).
+
 ## v2026.10.15.22
 
 ### Added: `resolve-conflicts.sh` (shipping-changes), a helper that never commits or pushes

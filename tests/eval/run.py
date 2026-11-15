@@ -859,7 +859,7 @@ def summarize_dir(directory, fail_under, save=False, red=False):
     meta = json.loads((out / "run.json").read_text()) if (out / "run.json").is_file() else {}
     ctx = {"out": out, "stamp": out.name, "model": meta.get("model"), "judge_model": meta.get("judge_model"),
            "no_skills": meta.get("no_skills", False), "checks": meta.get("checks", True),
-           "source": SkillSource(None), "heldout_ids": {s["id"] for s in load_scenarios().values() if s.get("heldout")},
+           "source": SkillSource(meta.get("skill_ref")), "heldout_ids": {s["id"] for s in load_scenarios().values() if s.get("heldout")},
            "baseline_context": meta.get("baseline_context"), "expected": {}}
     if not results:
         raise UsageError(f"--summarize: no sNN/repN.judge.json files under {directory}")

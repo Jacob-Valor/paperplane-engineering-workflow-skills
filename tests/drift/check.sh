@@ -114,4 +114,26 @@ else
   bad "standard.yml" "could not fetch templates/standard.yml"
 fi
 
+# 5. audit.sh accepts the standard-checks.yml ref the template pins (audit.sh's pin_re line).
+audit="$skills/paperplane-repo-setup/scripts/audit.sh"
+if [ -n "${std:-}" ]; then
+  pin=$(printf '%s\n' "$std" | grep -oE 'standard-checks\.yml@[^"'\''[:space:]]+' | head -1); pin=${pin#*@}
+  pin_re=$(sed -n "s/^pin_re='\(.*\)'.*/\1/p" "$audit" 2>/dev/null | head -1)
+  if [ -z "$pin" ]; then bad "standard.yml pin" "templates/standard.yml does not call standard-checks.yml@<ref>"
+  elif [ -z "$pin_re" ]; then bad "standard.yml pin" "no pin_re='...' line in $audit"
+  elif [[ "$pin" =~ ^($pin_re)$ ]]; then ok "standard.yml pin" "template pins @$pin; audit.sh accepts it"
+  else bad "standard.yml pin" "templates/standard.yml pins @$pin; $audit accepts only ^($pin_re)\$"; fi
+fi
+
+# 6. check-pr-body.sh rejects the same "pending" device lines as the CI step (literal regex compare).
+body="$skills/paperplane-shipping-changes/scripts/check-pr-body.sh"
+if [ -n "${checks:-}" ]; then
+  ci_re=$(printf '%s\n' "$checks" | grep -F 'pending|' | sed -n "s/.*grep -Eqi '\([^']*\)'.*/\1/p" | head -1)
+  local_re=$(sed -n "s/^pending_re='\(.*\)'.*/\1/p" "$body" 2>/dev/null | head -1)
+  if [ -z "$ci_re" ]; then bad "pending regex" "no grep -Eqi '...pending|...' line in standard-checks.yml; the PR body step changed"
+  elif [ -z "$local_re" ]; then bad "pending regex" "no pending_re='...' line in $body"
+  elif [ "$ci_re" = "$local_re" ]; then ok "pending regex" "check-pr-body.sh matches standard-checks.yml"
+  else bad "pending regex" "standard-checks.yml has '$ci_re'; $body has '$local_re'"; fi
+fi
+
 exit "$drift"

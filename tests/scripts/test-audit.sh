@@ -63,7 +63,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   standard:
-    uses: paperplanehq/paperplane-engineering/.github/workflows/standard-checks.yml@develop
+    uses: paperplanehq/paperplane-engineering/.github/workflows/standard-checks.yml@v1
     with:
       mobile: true
 EOF
@@ -91,6 +91,7 @@ compliant() {
 compliant
 expect "audit: compliant app repo passes" 0 bash "$A" "$R"
 says "audit: compliant repo has no FAIL or WARN" '^summary: .* app=yes  [0-9]+ pass, 0 fail, 0 warn$'
+says "audit: reports the pinned version" '^PASS  standard-workflow +calls standard-checks\.yml@v1$'
 says "audit: app repo auto-detected from app.json" '^PASS  standard-mobile '
 
 serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | grep -v 'mobile: true')"
@@ -106,8 +107,20 @@ expect "audit: --app forces the mobile check" 1 bash "$A" "$R" --app
 
 compliant
 serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '* @paperplanehq/leads @alice\n/api/ @bob\n')"
-expect "audit: one-owner CODEOWNERS rule fails" 1 bash "$A" "$R"
-says "audit: names the thin rule" '^FAIL  codeowners .*/api/'
+expect "audit: one-owner CODEOWNERS rule is a WARN only" 0 bash "$A" "$R"
+says "audit: names the one-owner rule" '^WARN  codeowners .*one @owner for: /api/; add a second code owner'
+serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '# template\n*   @pay-tbd\n')"
+expect "audit: template placeholder owner fails" 1 bash "$A" "$R"
+says "audit: names the placeholder owner" '^FAIL  codeowners .*placeholder owner for: \* \(@pay-tbd\)'
+serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '* @alice @paperplanehq/Mobile-TBD\r\n')"
+expect "audit: placeholder next to a real owner fails (any case, CRLF)" 1 bash "$A" "$R"
+says "audit: names the placeholder among owners" '^FAIL  codeowners .*@paperplanehq/Mobile-TBD'
+serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '* @alice @bob\n/docs/\n/ios/ @carol\n')"
+expect "audit: rule without an owner fails" 1 bash "$A" "$R"
+says "audit: names the ownerless rule" '^FAIL  codeowners .*no @owner for: /docs/;'
+serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '* @alice @bob\n/tbd/ @tbd-team @carol\n')"
+expect "audit: '-tbd' only counts at the end of a handle" 0 bash "$A" "$R"
+says "audit: two real owners pass" '^PASS  codeowners '
 
 compliant
 serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}" yarn.lock)"
@@ -149,9 +162,24 @@ expect "audit: missing concurrency is a WARN only" 0 bash "$A" "$R"
 says "audit: names the concurrency warning" '^WARN  standard-concurrency '
 
 compliant
-serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's/@develop/@main/')"
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's/@v1/@develop/')"
+expect "audit: workflow pinned to @develop fails" 1 bash "$A" "$R"
+says "audit: shows the wrong ref and the fix" '^FAIL  standard-workflow .*@develop, want .*@v<N>; copy the @v1 pin'
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's/@v1/@main/')"
 expect "audit: workflow pinned to another ref fails" 1 bash "$A" "$R"
-says "audit: shows the wrong ref" '^FAIL  standard-workflow .*@main'
+says "audit: shows the other ref" '^FAIL  standard-workflow .*@main'
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's/@v1/@vnext/')"
+expect "audit: @v without digits fails" 1 bash "$A" "$R"
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's/@v1/@v2/')"
+expect "audit: a later major tag passes" 0 bash "$A" "$R"
+says "audit: reports the later tag" '^PASS  standard-workflow +calls standard-checks\.yml@v2$'
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's/@v1/@v1.2.0/')"
+expect "audit: a full version tag passes" 0 bash "$A" "$R"
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | sed 's#paperplanehq/paperplane-engineering#someone/fork#')"
+expect "audit: a fork's standard-checks fails" 1 bash "$A" "$R"
+serve "repos/$R/contents/.github/workflows/standard.yml?ref=develop" "$(printf '%s\n' "$WF" | grep -v 'uses:')"
+expect "audit: no standard-checks call fails" 1 bash "$A" "$R"
+says "audit: says the call is missing" '^FAIL  standard-workflow .*does not call .*copy the @v1 pin'
 
 compliant
 serve "repos/$R/contents/.claude/settings.json?ref=develop" '{"permissions":{"allow":["Bash(pnpm test)"]}}'
@@ -197,7 +225,8 @@ serve "repos/$R/contents/CODEOWNERS?ref=develop" "* @a @b"
 expect "audit: root CODEOWNERS is accepted" 0 bash "$A" "$R"
 says "audit: reports the root CODEOWNERS" '^PASS  codeowners .*CODEOWNERS'
 serve "repos/$R/contents/CODEOWNERS?ref=develop" "* @a"
-expect "audit: thin root CODEOWNERS fails" 1 bash "$A" "$R"
+expect "audit: one-owner root CODEOWNERS is a WARN only" 0 bash "$A" "$R"
+says "audit: one-owner root CODEOWNERS warns" '^WARN  codeowners +CODEOWNERS: one @owner'
 serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}" docs)"
 serve "repos/$R/contents/CODEOWNERS?ref=develop" ""
 serve "repos/$R/contents/docs?ref=develop" "$(names CODEOWNERS)"

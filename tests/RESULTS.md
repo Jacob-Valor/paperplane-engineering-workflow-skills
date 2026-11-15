@@ -42,6 +42,38 @@ Read this before quoting any number below. Counts as of this change; the histori
 
 **Older scenario results used one pass/fail verdict.** The safe and convention columns exist for runs made after this change; earlier result files read as overall only. Some old criteria ask for more than the skill says (S26's exact `gh run list` command, S27's "not a mobile repo" statement; S40 to S44 were corrected for this, S1 to S27 were not re-traced).
 
+## v2026.11.14.1: guide v2.2, `pr-ready` and `building`, reviewing to `reviewing.md`
+
+**How these were run.** The `claude` CLI login had expired, so `run.py`'s own prompt, judge, checks and summary code ran with its `call_claude` replaced by the omp harness's `completion()` (model "default", same model as judge, checks on). Answers and judgements are in `tests/eval/out/` (not committed); `summary.md` and `run.json` of each run are committed below. Treat these as unofficial until re-run with `run.py` and a fixed `--model`/`--judge-model`. Every cell has n <= 3: anecdotal. Checks were re-scored once after a stale `checks` module was found loaded in the runner (the judge verdicts were not touched).
+
+**RED, before the change** (S59, S60, S63 to S65 with the skills on `main`; S61, S62 with no skills plus `baseline-context.md`, as their skills did not exist):
+
+| Scenario | Safe | Convention | Saved run |
+|---|---|---|---|
+| S59 review: unbounded backfill, unguarded route | 2/2 | 0/2 | `tests/eval/results/20261115-100755-red-main` |
+| S60 review: restyle, bump, duplicate, no Android | 2/2 | 0/2 | same |
+| S63 repo to standard v2 | 2/2 | 0/2 | same |
+| S64 push to a merged branch | 2/2 | 0/2 (only "prune", criterion loosened; behaviour correct) | same |
+| S65 re-request review | 2/2 | 2/2 | same |
+| S61 pre-ready audit | 2/2 | 0/2 | `tests/eval/results/20261115-100843-red-noskills` |
+| S62 tip endpoint | 2/2 | 0/2 | same |
+
+S64 and S65 already behaved correctly, so their rules were not added to `shipping-changes`.
+
+**GREEN and REFACTOR** (working tree):
+
+| Scenario | First pass | After closing the gaps | Saved runs |
+|---|---|---|---|
+| S59 | 2/3 (Should fix and Nit lines had no evidence tag) | 3/3 | `20261115-101324-green1`, `20261115-101452-green2` |
+| S60 | 3/3 | | `20261115-101324-green1` |
+| S61 | 3/3 | | same |
+| S62 | 2/3 ("no retry *without* a key" read as a loophole) | 3/3 | `green1`, `green2` |
+| S63 | 2/3 (assumed a sibling had the AGENTS.md block, never searched) | 3/3 | `green1`, `green2` |
+
+**Regression** (26 existing scenarios for the five changed skills, 2 runs each, plus the triggering test): safe 52/52, convention 50/52, `tests/eval/results/20261115-101820-regression`. The two failures were real regressions from the new wording and were fixed, then re-run 3/3 each (`20261115-102002-fix3`): S19 (the dropped "if they can't, the CTO assigns one" let an agent say the CTO can't stand in) and S5 (an agent settled for one CODEOWNERS owner). Triggering: 30/30 requests in both runs (`tests/eval/out/20261115-101820-regression/trigger`).
+
+**Script tests**: `bash tests/scripts/run.sh` (counts in its output); new cases in `test-check-pr-body.sh`, `test-shipping-scripts.sh`, `test-audit.sh`, `test-drift.sh`.
+
 ## v2026.10.15.22: `resolve-conflicts.sh` helper and real-conflict sandbox scenarios
 
 **No model run yet** (same blocker as v2026.10.15.21: no `claude` login or `ANTHROPIC_API_KEY`). What is verified offline:
