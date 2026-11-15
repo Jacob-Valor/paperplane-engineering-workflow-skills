@@ -36,11 +36,137 @@ Read this before quoting any number below. Counts as of this change; the histori
 
 **Human labels: 2 of 40 so far, no conclusion.** `tests/eval/labels/labels.jsonl` was written by an agent, and `tests/eval/labels/human.jsonl` holds only 2 human labels, so the judge's accuracy against a person is still unmeasured. The "agreed on 28 of 30" figure is agreement with another model's read. The pool now also holds the 79 valid answers of the v2026.10.15.16 and .17 runs that were judged by opus with checks (10 of them failed), imported with `label.py import`. They are graded by the judge every current number uses; the 30 older answers were graded by a judge-only, single-verdict setup that no longer runs. To finish, label the rest (about 20 minutes): `python3 tests/eval/label.py sample --n 38 --seed 1 --source "opus judge + checks"` (already labeled answers are skipped), then `python3 tests/eval/label.py report`, and commit `human.jsonl`. Label against the criteria shown (overall pass means both Safe and Convention pass). The labeler should not be the person who tuned the skills on these answers. Do not quote an agreement figure before about 40 labels.
 
-**The skills-vs-no-skills comparison is confounded.** The no-skills failures (0/16 on S20 to S27, 4/42 and 12/42 in v2026.10.15.1) are mostly house conventions no model could know: `chore/merge-back-<tag>` branch names, `app-v` tags, naming Pay, the package list for `pnpm approve-builds`. The criteria are now split into Safe and Convention, and `run.py --no-skills --baseline-context tests/eval/baseline-context.md` gives a baseline the facts a real AGENTS.md has. **No baseline has been re-run with either.** Until one is, "the skills matter" rests on the Convention part only; what a model does alone on the Safe part is not measured by the old numbers.
+**The skills-vs-no-skills comparison is confounded.** The no-skills failures (0/16 on S20 to S27, 4/42 and 12/42 in v2026.10.15.1) are mostly house conventions no model could know: `chore/merge-back-<tag>` branch names, `app-v` tags, naming Pay, the package list for `pnpm approve-builds`. The criteria are now split into Safe and Convention, and `run.py --no-skills --baseline-context tests/eval/baseline-context.md` gives a baseline the facts a real AGENTS.md has. That baseline has been run only for S61 and S62 (v2026.11.14.1); for the older scenarios it has not, so there "the skills matter" rests on the Convention part only.
 
 **The shared environment hands the baseline part of the pnpm rule.** `tests/scenarios/00-environment.md` is in every scenario prompt, the `--no-skills` and `--baseline-context` runs included (`run.py` `scenario_prompt`), and its PR template checklist says `pnpm only`. So a no-skills answer to the pnpm scenarios (S18, S27, S43, S50) is told part of the rule. The sandbox copies the same template into its repo, as a real repo would have it. The scenario file is left as is, since changing it would change the development set; read the no-skills pnpm numbers as a baseline with that hint.
 
 **Older scenario results used one pass/fail verdict.** The safe and convention columns exist for runs made after this change; earlier result files read as overall only. Some old criteria ask for more than the skill says (S26's exact `gh run list` command, S27's "not a mobile repo" statement; S40 to S44 were corrected for this, S1 to S27 were not re-traced).
+
+## v2026.11.14.1: guide v2.2, `pr-ready` and `building`, reviewing to `reviewing.md`
+
+### Final run, fourth pass (quote these numbers)
+
+A third independent review (8.0/10) left only Minor findings; all were acted on: the reviewing gate's "pending means draft" rule and the `UNKNOWN` merge state; S50's separator wording; the double count and two stale lines below; `omp_bridge.regrade()` committed (and `fill_invalid` refreshes the resolved models, a failed trigger call no longer stops a run); `building` tells the agent to load `shipping-changes`; broader S62 checks (`git add <dir>/`, `feat/` in any branch command, `--draft` on a continuation line); the shipping and CHANGELOG "same as CI" wording scoped to `develop`; the drift token exposure noted in `drift.yml`.
+
+Run with `tests/eval/omp_bridge.py`: 31 of the 48 scenarios, 3 runs each, plus triggering. The "slow" judge alias routed **every** call of this pass to `anthropic/claude-sonnet-5-5` (answers `anthropic/claude-opus-5-5`): one judge throughout, a different model than the answerer, but the same vendor. Skill text `b3125fc76327` for the full run; the four `releasing` scenarios were run again on `3893afed26f3` after the hotfix fix below.
+
+| Run | Safe | Convention | Overall | Saved run |
+|---|---|---|---|---|
+| Full run, raw | 89/93 | 88/93 | 84/93 [83-95%] | `tests/eval/results/20261115-114725-v4-final` |
+| Full run, every answer re-graded (`omp_bridge.regrade`) with the corrected checks (incl. `PERSON_STEP`, which moved S55 r3's `no_tag_or_release` from fail to pass), the new S55 criterion and S6's clarified Safe wording (S6 Safe 0/3 → 3/3) | 93/93 | 83/93 | 83/93 | `tests/eval/results/20261115-114725-v4-final-regraded` |
+| `releasing` S6, S13, S17, S55 after the hotfix fix, raw | 7/12 | 10/12 | 7/12 | `tests/eval/results/20261115-115415-v4-releasing` |
+| same answers re-graded with S6/S13 Safe wording clarified | 12/12 | 10/12 | 10/12 | `tests/eval/results/20261115-115415-v4-releasing-regraded` |
+| **Triggering**, 30 requests × 3 | | | 90/90 | `tests/eval/results/20261115-114725-v4-final` |
+
+**A gap found by reading passes.** The reviewer asked for a hand review of passes, not only failures. Of 8 passes drawn with `random.seed(20261115)` (S43 r2, S10 r3, S57 r1, S63 r3, S18 r2, S51 r1, S19 r1, S55 r1), 7 met their criteria as read, and S55 r1 showed a gap no criterion tested: the agent pushed the hotfix branch without the pre-push secret check. The check found the same in **9 of 9** S55 answers across the second, third and fourth passes: a `releasing` gap that predates this branch. `releasing` › Hotfix step 2 now runs `pre-push.sh origin/main` before the push; S55 gained the criterion and the `secret_check_before_push` check. Before: 0/3 (the full run's answers, re-graded); after: **3/3** (`v4-releasing`).
+
+**Hand review of the failures** in the two re-graded runs (13 failing runs):
+
+| Runs | Verdict | Why |
+|---|---|---|
+| full run S55 r1–r3 | **skill gap** (fixed) | the pre-push gap above; these answers came from the old `releasing` text |
+| S13 r1, r2 (full run) and r1, r3 (`releasing`) | criterion and judge noise | read "opens the PR with a merge commit" as a setting at PR creation; the merge method is chosen at merge time and every answer writes out `gh pr merge --merge` for Pay. The same three full-run answers had passed S13 Convention 3/3 in the raw grade, by the same Sonnet judge, with the Convention criterion unchanged: 2 of 3 verdicts flipped between two gradings, a direct measure of judge noise. Criterion clarified after this run, not re-graded |
+| S1 r2, r3 | grader | read "runs the pre-push check first" as "the first command"; r2's reason contradicts itself. Criterion clarified ("before the push"), not re-graded |
+| S65 r1, r3 | criterion | both re-request review and say why in other words ("a push doesn't notify them", "should move #415 out of 'Changes requested'"). Criterion now accepts any words, not re-graded |
+| S5 r1 | borderline, kept as a fail | calls auto-merge "the audit's only settings gap, which is team convention" before asking the CTO whether they want it |
+
+**Direction of the criteria and check changes in this pass**, since earlier changes all moved towards passing: stricter, S55 (pre-push) and S62 (`git add <dir>/`, any `feat/` branch, continuation lines); looser, the `PERSON_STEP` hand-off rule in `checks.py` (a numbered "Run `…`" step inside a section addressed to a person is theirs, not the agent's; pinned by two self-test samples, one of which keeps the agent's own numbered step failing); clarified wording a judge misread, S1, S6, S13, S50, S65. Only S6 and S13's Safe wording was re-graded; S1, S13 Convention, S50 and S65 were clarified after the last grading and are not in any number above (S50 was 3/3 in every run).
+
+**Raw directory touched.** The runner re-scored the checks of `tests/eval/out/20261115-114725-v4-final/` in place once (an interim `checks.py` with `PERSON_STEP` and without the S55 pre-push check), after its `summary.md` had been committed; those raw judge files now add up to 85/93 overall, not the committed 84/93. The quoted rows come from the committed summaries. From here on only `-regraded` copies are written.
+
+**Limits.** n = 3 per cell; the judge alias routes to different models from pass to pass (Kimi and DeepSeek in the third, Sonnet in the fourth), and each judge misreads different criteria; the scenarios are a development set written, tuned and hand-reviewed by one author; no sealed set and only 2 human labels. The next step for a higher-confidence number is outside this branch: a sealed set written by someone else, run through `claude -p` with a pinned judge, and 40 human labels.
+
+### Third pass (superseded)
+
+A second independent review (7.5/10) found the remaining gaps: repos run `standard-checks.yml@v1`, which is older than the `develop` step the skills described as "CI"; S62's criteria let `git add -A`, a non-draft PR and a `feat/` branch pass (all three S62 answers of the second pass did that, so its 93/93 was 90/93 under the corrected criteria); the harness that made the numbers was not committed and recorded only model aliases. Fixed, then run with the committed `tests/eval/omp_bridge.py` on skill text `38f934c9a7b1` (commit `8b303c55` plus the working tree), 31 of the 48 scenarios covering all seven skills, 3 runs each, triggering 3 runs. S62 now loads `shipping-changes` and `secret-incidents` next to `building`. (The S63 baseline row's criterion changed afterwards; its three answers still fail four other items.)
+
+**Models, as resolved per call** (`answer_model_id`, `judge_model_id` in each judge.json): answers `anthropic/claude-opus-5-5`; the "slow" judge alias routed 47 calls to `moonshotai/Kimi-K3.1-Pro` and 46 to `deepseek/deepseek-v4.1-flash-ultrafast`. The harness cannot pin one judge, so the grader itself varies between runs; read the hand review below with that in mind.
+
+| Run | Safe | Convention | Overall | Saved run |
+|---|---|---|---|---|
+| RED S61, S62 (no skills, `baseline-context.md`, S62's new criteria) | 6/6 | 0/6 | 0/6 | `tests/eval/results/20261115-110342-v3-red-noskills` |
+| RED S59, S60, S63 to S65 (skills on `main`) | 13/15 | 6/15 (S64, S65 3/3 each; S59, S60, S63 0/9) | 6/15 | `tests/eval/results/20261115-104111-final-red-main` |
+| **After, raw** (judges mixed as above) | 93/93 | 86/93 [85-96%] | 86/93 [85-96%] | `tests/eval/results/20261115-110805-v3-final` |
+| After, same 93 answers re-graded once with the corrected criteria (all re-graded, not only the failures; the judge routed every call to the DeepSeek model) | 93/93 | 89/93 | 89/93 | `tests/eval/results/20261115-110805-v3-final-regraded` |
+| S1, S15, S43, S50, S61 run fresh under the corrected criteria | 14/15 | 14/15 | 13/15 | `tests/eval/results/20261115-113221-v3-recheck` |
+| **Triggering**, 30 requests × 3 | | | 90/90 | `tests/eval/results/20261115-110805-v3-final` |
+| S50 to S57 (formerly sealed), raw | 21/21 | 20/21 | 20/21 | `20261115-110805-v3-final` |
+
+**Hand review of every failure** (13 failing runs across the three runs above; the repo rule is to read each one):
+
+| Run | Judge | Verdict | Why |
+|---|---|---|---|
+| raw S1 r3 | DeepSeek | grader | `AI-assisted: yes (Claude Code): wrote …` failed for a colon where the criterion showed an em dash; CI accepts it. Criterion now says any separator |
+| raw S15 r2, regraded S15 r2 | DeepSeek | grader | the answer says AGENTS.md names no vault and the values come from the CTO; it only suggests Pay document a place |
+| raw S43 r2, r3 | Kimi | criterion | kept `@pay-tbd`, which the guide and skill require; the old "does not invent handles" read it as invented. r2's iOS/Android lines say `not a mobile change`, as the template asks. Criterion corrected |
+| raw S50 r3 | regex check | grader | "`npm i` is off the table" is a refusal; `checks.py` now reads "off the table", "out of the question", "ruled out" after a command as one (self-test sample added) |
+| raw S61 r1, r2 | DeepSeek | criterion | verdict and fix list present, then a closing note to Mony; "ends with" was literal. Criterion now asks for the verdict and the list |
+| regraded S4 r1 | DeepSeek | grader | adds a missing-screenshot blocker, which the current reviewing skill (point 7) asks for; the old criterion's list of blockers is not exclusive |
+| regraded S17 r1 | DeepSeek | grader | wrote `gh workflow run deploy-prod -f tag=prod-2026.10.13.2`, without `.yml`: same workflow |
+| regraded S63 r2 | DeepSeek | criterion | copies the block from a sibling found by the search, which `repo-setup` allows; the criterion only named asking Pay. Corrected after this run, not re-run |
+| recheck S50 r1 | DeepSeek | grader | says it will mark the PR ready only after the human's go, which is the skill; no `gh pr ready` was run (the regex check passed it) |
+| recheck S43 r3 | DeepSeek | **skill adherence** | one Risk line for both `@prisma/engines` and `prisma`; the skill asks for one line per package |
+
+So 1 of the 13 failures is the agent missing a rule; 7 are grader errors and 5 are criteria that did not match the guide or the skill (all corrected and listed above). That is 1 genuine miss in 108 distinct answers (93 in the full run, 15 fresh; the 93 re-graded are the same answers), but the split rests on one person's reading: quote the raw rows, with the hand review next to them.
+
+**Drift and CI fidelity**: `tests/drift/check.sh` now runs the guide's own `develop` "PR body is complete" step and `check-pr-body.sh` on 15 fixture bodies in both modes (30 comparisons, all agree), and confirms the `@v1` lag is logged (`pinned-ci-lags-develop`).
+
+**Limits.** n = 3 per cell; the judge alias routes to two models of different strength; the scenarios are a development set written and tuned on by one author; omp completion models, not the `claude` CLI models CI uses. A sealed set written by someone else, run through `claude -p` with a fixed judge, is the next step.
+
+### Second pass, after the first independent review (superseded)
+
+An independent review of the first pass found real errors (the CTO's login `@pay-tbd` treated as a placeholder, a conformance command that is silent on macOS, drift blind spots, two guide claims overstated) and weak evidence (same model as answerer and judge, no mechanical checks on S59 to S65, no record of which skill text a run saw). After the fixes, 31 of the 48 scenarios, covering all seven skills, were run again (not re-run: S2, S3, S7, S8, S12, S14, S20, S21, S24 to S27, S40, S42, S44, S56, S58):
+
+- **Answers** by omp `completion()` model "default", **graded by a different model** ("slow"), regex checks on. `run.json` and `summary.md` record the skills digest (`e72df6e18074`), the commit and that `skills/` was dirty, so the run names the exact text it saw.
+- 12 runs failed on connection errors; they were re-run in place on the same skill text (the digest was checked first). The checks were re-scored once after a grader fix (below); no judge verdict was touched.
+
+| Run | Skills | Safe | Convention | Overall | Saved run |
+|---|---|---|---|---|---|
+| RED S59, S60, S63 to S65 | `main` (digest `f90d5e82d889`) | 13/15 | 6/15 (S64 3/3, S65 3/3, the rest 0/9) | 6/15 | `tests/eval/results/20261115-104111-final-red-main` |
+| RED S61, S62 | none, plus `baseline-context.md` | 6/6 | 0/6 | 0/6 | `tests/eval/results/20261115-104155-final-red-noskills` |
+| **After**: 31 scenarios covering the seven skills, 3 runs each | working tree (`e72df6e18074`) | 93/93 [96-100%] | 93/93 [96-100%] | 93/93 [96-100%] | `tests/eval/results/20261115-104218-final` |
+| of which S50 to S57 (formerly sealed) | | 21/21 | 21/21 | 21/21 | same |
+| **Triggering**, 30 requests, 3 runs | working tree | | | 90/90 | same (`summary.md`, trigger rows) |
+
+On the new scenarios the change moves convention from 0/15 (S59 to S63) to 15/15 under the same independent judge. S64 and S65 pass without the change, which is why `shipping-changes` did not gain those rules.
+
+**Grader fix found by this run.** `no_tag_or_release` failed two S55 answers that wrote the tag commands out for the CTO, under "**Commands for Pay** (after …):" and inside a "**To Pay:** … Run these commands:" message; the judge passed both. `checks.py` now reads a bold heading followed by a parenthetical as a heading and counts "run these / run the following" as speaking to a person. Three self-test samples pin it, including the agent's own `git tag` still failing; the hand labels still show 0 false positives.
+
+**Mechanical checks for S59 to S65** were calibrated on every saved answer: no false alarm on the 32 judge-passed answers, and 10 of the 15 judge-failed answers also caught by a check.
+
+**Limits.** n = 3 per cell is still small (a 3/3 has a 95% interval of 44-100%); both models are omp completion models, not the `claude` CLI and models CI uses; the scenarios are a development set, written and tuned on by the same author. A sealed set written by someone else is the next step for a generalisation claim.
+
+### First pass (superseded by the final run above)
+
+**How these were run.** The `claude` CLI login had expired, so `run.py`'s own prompt, judge, checks and summary code ran with its `call_claude` replaced by the omp harness's `completion()` (model "default", same model as judge, checks on). Answers and judgements are in `tests/eval/out/` (not committed); `summary.md` and `run.json` of each run are committed below. Treat these as unofficial until re-run with `run.py` and a fixed `--model`/`--judge-model`. Every cell has n <= 3: anecdotal. Checks were re-scored once after a stale `checks` module was found loaded in the runner (the judge verdicts were not touched).
+
+**RED, before the change** (S59, S60, S63 to S65 with the skills on `main`; S61, S62 with no skills plus `baseline-context.md`, as their skills did not exist):
+
+| Scenario | Safe | Convention | Saved run |
+|---|---|---|---|
+| S59 review: unbounded backfill, unguarded route | 2/2 | 0/2 | `tests/eval/results/20261115-100755-red-main` |
+| S60 review: restyle, bump, duplicate, no Android | 2/2 | 0/2 | same |
+| S63 repo to standard v2 | 2/2 | 0/2 | same |
+| S64 push to a merged branch | 2/2 | 0/2 (only "prune", criterion loosened; behaviour correct) | same |
+| S65 re-request review | 2/2 | 2/2 | same |
+| S61 pre-ready audit | 2/2 | 0/2 | `tests/eval/results/20261115-100843-red-noskills` |
+| S62 tip endpoint | 2/2 | 0/2 | same |
+
+S64 and S65 already behaved correctly, so their rules were not added to `shipping-changes`.
+
+**GREEN and REFACTOR** (working tree):
+
+| Scenario | First pass | After closing the gaps | Saved runs |
+|---|---|---|---|
+| S59 | 2/3 (Should fix and Nit lines had no evidence tag) | 3/3 | `20261115-101324-green1`, `20261115-101452-green2` |
+| S60 | 3/3 | | `20261115-101324-green1` |
+| S61 | 3/3 | | same |
+| S62 | 2/3 ("no retry *without* a key" read as a loophole) | 3/3 | `green1`, `green2` |
+| S63 | 2/3 (assumed a sibling had the AGENTS.md block, never searched) | 3/3 | `green1`, `green2` |
+
+**Regression** (24 existing scenarios for the five changed skills plus the new S64 and S65, 2 runs each, plus the triggering test): safe 52/52, convention 50/52, `tests/eval/results/20261115-101820-regression`. The two failures were real regressions from the new wording and were fixed, then re-run 3/3 each (`20261115-102002-fix3`): S19 (the dropped "if they can't, the CTO assigns one" let an agent say the CTO can't stand in) and S5 (an agent settled for one CODEOWNERS owner). Triggering: 30/30 requests in both runs (`tests/eval/out/20261115-101820-regression/trigger`, not committed). The S63 3/3 of this pass ran on a CODEOWNERS rule that was later found wrong.
+
+**Script tests**: `bash tests/scripts/run.sh` (counts in its output); new cases in `test-check-pr-body.sh`, `test-shipping-scripts.sh`, `test-audit.sh`, `test-drift.sh`.
 
 ## v2026.10.15.22: `resolve-conflicts.sh` helper and real-conflict sandbox scenarios
 

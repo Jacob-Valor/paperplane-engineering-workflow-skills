@@ -1,7 +1,7 @@
 # Paper Plane engineering workflow skills
 
 [![validate](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml/badge.svg)](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml)
-Version **v2026.10.15.22**, matching the guide of 2026-10-15 · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
+Version **v2026.11.14.1**, matching the guide of 2026-11-14 (standard v2.2) · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
 
 Agent skills that encode the [Paper Plane engineering guide](https://github.com/paperplanehq/paperplane-engineering)
 for every repository in the `paperplanehq` GitHub org. They follow the
@@ -16,10 +16,12 @@ use pnpm only, keep secrets out of git, and leave merging, releasing and deployi
 | Skill | Use it when |
 |---|---|
 | [`paperplane-shipping-changes`](skills/paperplane-shipping-changes/SKILL.md) | Any code, config or dependency change: branch, commit, `pnpm add`, push, draft PR into `develop`, stacks, marking ready |
-| [`paperplane-reviewing-prs`](skills/paperplane-reviewing-prs/SKILL.md) | Reviewing a teammate's PR. Produces a findings report; a human approves and merges |
+| [`paperplane-pr-ready`](skills/paperplane-pr-ready/SKILL.md) | Before a PR is marked Ready: the guide's seven-check pre-ready audit (`/pr-ready`), PASS/FAIL/ASK table, never marks it ready |
+| [`paperplane-building`](skills/paperplane-building/SKILL.md) | Writing the code: route schemas and `openapi.json`, generated client types, idempotent side effects, money in minor units, job table, two-step migrations, webhooks, tests, no dead code |
+| [`paperplane-reviewing-prs`](skills/paperplane-reviewing-prs/SKILL.md) | Reviewing a teammate's PR: the gate, the eight points, Blocking/Should fix/Nit, the verdicts (Split, Needs device check, Duplicate). Produces a findings report; a human approves and merges |
 | [`paperplane-secret-incidents`](skills/paperplane-secret-incidents/SKILL.md) | gitleaks fails, a credential was committed or pasted, someone asks for `.env` values |
-| [`paperplane-releasing`](skills/paperplane-releasing/SKILL.md) | Release PRs `develop → uat → main`, `prod-YYYY.MM.DD` tags, rollback, hotfixes, `app-vX.Y.Z` store tags |
-| [`paperplane-repo-setup`](skills/paperplane-repo-setup/SKILL.md) | Onboarding a repo: standard CI, PR template, `CODEOWNERS`, `AGENTS.md`, pnpm migration, branches, merge settings |
+| [`paperplane-releasing`](skills/paperplane-releasing/SKILL.md) | Release PRs `develop → uat → main`, `prod-YYYY.MM.DD` tags (in `unit-deploy` repos the tag push deploys), rollback, hotfixes, `app-vX.Y.Z` store tags |
+| [`paperplane-repo-setup`](skills/paperplane-repo-setup/SKILL.md) | Onboarding a repo: standard CI, PR template, `CODEOWNERS`, `AGENTS.md`, pnpm migration, branches, merge settings, standard v2 (`.paperplane.yml`, `standard / conformance`) |
 
 Agents load a skill automatically when the request matches its description. You can also ask for
 one by name: "use paperplane-shipping-changes".
@@ -49,11 +51,12 @@ skills/<name>/scripts/*.sh                checks the skill runs with `bash`
   repo-setup/scripts/audit.sh             PASS/FAIL audit of one repo against the standard
 skills/paperplane-repo-setup/assets/.github/  optional PR automation for product repos: `/ready` comment, hotfix merge-back drafts
 skills/paperplane-shipping-changes/hooks/ git pre-push hook and Claude Code guard, with installers
-tests/scenarios/                          agent pressure scenarios S1–S27, S40–S44 and S50–S58 (S50–S57 were the sealed set, run once)
+tests/scenarios/                          agent pressure scenarios S1–S27, S40–S44 and S50–S65 (S50–S57 were the sealed set, run once)
 tests/triggering.md                       do the descriptions pick the right skill?
 tests/README.md                           how to run them and the pass criteria
 tests/RESULTS.md                          before/after scores for every change
 tests/eval/run.py                         runs the scenarios through `claude -p` and grades them
+tests/eval/omp_bridge.py                  the same runner through an omp kernel's completion(), when `claude -p` is unavailable
 tests/eval/checks.py                      mechanical checks on top of the model grader
 tests/eval/sandbox/run.py                 tool-using eval in a throwaway repo, graded by end state
 tests/scripts/                            behaviour tests for every script and hook, run in CI
@@ -123,13 +126,13 @@ flowchart TD
   A["Start from latest develop<br/>git switch -c feature/topic"] --> B["Verify with the repo's scripts<br/>pnpm test · pnpm lint<br/>mobile: iOS and Android"]
   B --> C["Commit type(scope): summary<br/>stage files by name"]
   C --> F["pre-push.sh, push the branch the same day<br/>draft PR into develop, AI-assisted: yes"]
-  F --> E["Person running the agent<br/>reviews the full diff, says go<br/>agent runs gh pr ready"]
-  E --> G{"CI: standard / checks<br/>pnpm only · secret scan · PR title<br/>PR body is complete · PR size"}
+  F --> E["Person running the agent<br/>reviews the full diff, says go<br/>paperplane-pr-ready audit passes<br/>agent runs gh pr ready"]
+  E --> G{"CI: standard / checks<br/>pnpm only · secret scan · PR title<br/>PR body is complete · PR size<br/>standard / conformance (v2 repos)"}
   G -->|"green"| R{"Reviewer: a code owner, not the author,<br/>not who prompted the agent<br/>paperplane-reviewing-prs"}
   R -->|"approved, threads resolved"| D[("develop<br/>squash and merge")]
   G -->|"secret found"| S["paperplane-secret-incidents<br/>tell the CTO, rotate, fix the code"]
   G -->|"other check red"| X["Fix on the branch<br/>new commit"]
-  R -->|"changes needed"| X
+  R -->|"changes requested"| X
   S --> X
   X -.-> C
 ```
@@ -150,7 +153,7 @@ flowchart LR
     direction LR
     D[develop] -->|"PR chore(release): uat YYYY-MM-DD<br/>merge commit"| U[uat]
     U -->|"tested on UAT<br/>PR chore(release): prod YYYY-MM-DD<br/>merge commit"| M[main]
-    M -->|"tag prod-YYYY.MM.DD<br/>deploy that tag"| P[(production)]
+    M -->|"tag prod-YYYY.MM.DD<br/>unit-deploy repos: the tag push deploys"| P[(production)]
   end
   subgraph hotfix["Hotfix"]
     direction LR
@@ -171,21 +174,22 @@ didn't write the PR and didn't prompt the agent that wrote it. The **CTO** (Pay)
 
 ● every week · ◐ when it comes up · — not needed
 
-| Guide role | shipping-changes | reviewing-prs | secret-incidents | releasing | repo-setup |
-|---|---|---|---|---|---|
-| Developer | ● | — | ◐ | ◐ | ◐ |
-| Reviewer | — | ● | ◐ | — | — |
-| CTO | — | ◐ | ● | ● | ● |
+| Guide role | shipping-changes | pr-ready | building | reviewing-prs | secret-incidents | releasing | repo-setup |
+|---|---|---|---|---|---|---|---|
+| Developer | ● | ● | ● | — | ◐ | ◐ | ◐ |
+| Reviewer | — | — | — | ● | ◐ | — | — |
+| CTO | — | — | — | ◐ | ● | ● | ● |
 
 - **Developer:** every change is a branch and a PR into `develop` (guide §2–5). Use
   `paperplane-releasing` only for a hotfix, which you do "with the CTO" (§2). Use
   `paperplane-repo-setup` to write the file PRs for a repo (`chore/pnpm`, `chore/engineering-standard`).
   Mobile changes (TripBuddy, Sanaam, Studio apps) are verified on iOS **and** Android before the PR
   is marked Ready (§4); that is the only rule that depends on what you work on.
-- **Reviewer:** checks the description matches the diff, CI is green (the advisory AI review never
-  blocks), no secrets or `.env`, no `package-lock.json`/`yarn.lock`/`bun.lock`, tests for new logic,
-  mobile verified on both platforms, one concern per PR, every thread resolved (§4). Then approves
-  and squash-merges. A secret in the diff hands off to `paperplane-secret-incidents`.
+- **Reviewer:** works through `reviewing.md`: the gate (draft, base, conflicts, CI, body, size, device
+  lines, identity), then the eight points (scope, correctness, security, data safety, standards,
+  dependencies, mobile, AI-written code). Each finding is Blocking, Should fix or Nit, and Reproduced
+  or From code. The verdict is Approved, Changes requested, Needs device check, Split or Duplicate;
+  the reviewer approves and squash-merges. A secret in the diff hands off to `paperplane-secret-incidents`.
 - **CTO:** merges `develop → uat → main` with merge commits, tags `prod-YYYY.MM.DD`, deploys (§8).
   Gets told at once about leaked secrets, which must be rotated (§6). Applies repo settings that
   repo-setup writes out.

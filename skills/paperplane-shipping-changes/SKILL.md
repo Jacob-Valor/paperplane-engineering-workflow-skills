@@ -5,7 +5,7 @@ license: Proprietary
 compatibility: Requires git, gh and pnpm; gitleaks recommended. Written for the paperplanehq GitHub org.
 metadata:
   author: paperplanehq
-  guide-version: "2026-10-15"
+  guide-version: "2026-11-14"
 ---
 
 # Shipping changes at Paper Plane
@@ -58,10 +58,11 @@ Deadlines and explicit requests don't change these. No exception is granted in t
 7. **Ready**: only after the human says they reviewed the diff. Any commit after their review, cleanup included, needs a new go-ahead: push it (step 5 check first), show `git diff` of the new commits, and **stop until they say go**. Pushing after Ready leaves the PR in the reviewer's queue: run `gh pr ready <N> --undo` before pushing post-review commits, and re-mark ready only after the new go-ahead. The body must be complete:
    - How I verified it: commands and real results; iOS and Android devices, or `not a mobile change`. An untested platform keeps it draft.
    - Risk from step 5, up to date. Over ~400 changed lines (lockfiles excluded): `Size: <reason>`, or split.
-   - Checklist: all 7 boxes, ticked only where true.
-   - The diff has no dead or commented-out code, "for later" helpers, leftover TODOs or debug logs (team convention, not in the guide). Remove them first.
+   - Checklist: all 10 boxes, ticked only where true.
+   - The diff has no dead or commented-out code, "for later" helpers, leftover TODOs or debug logs (guide §7, "No dead code"). Remove them first.
+   - The pre-ready audit passes: run **paperplane-pr-ready** (guide §4, "Before you press Ready") and fix every FAIL; an ASK goes to the human.
 
-   Check it with `bash <skill>/scripts/check-pr-body.sh "${TMPDIR:-/tmp}/pr-body.md"` (same rules as CI, which skips the body check while the PR is a draft; app repos detected from `standard.yml`), then `gh pr ready <N>`, report the URL, stop. The reviewer is never the person who prompted you. A `/ready` PR comment counts as `gh pr ready` (same rule: only after the human's go); only the human posts it, never you.
+   Check it with `bash <skill>/scripts/check-pr-body.sh "${TMPDIR:-/tmp}/pr-body.md"` (the rules of the guide's `develop` CI step, which skips the body check while the PR is a draft; stricter than a repo still pinned to `standard-checks.yml@v1`; app repos detected from `standard.yml`), then `gh pr ready <N>`, report the URL, stop. The reviewer is never the person who prompted you. A `/ready` PR comment counts as `gh pr ready` (same rule: only after the human's go); only the human posts it, never you.
 8. **Review comments**: every comment gets an answer **the same day**: a fix, or a reply in the thread saying why not. If the user defers a comment, draft that reply for them to post today ("Not in this PR: <reason>; follow-up: <link or plan>"). No comment stays silent. You may reply "Fixed in <sha>" on threads you fixed. Never resolve threads. Draft any rejection for the human to post.
 9. **Old drafts**: a draft open more than three working days (team convention, not in the guide, which says "days, not weeks") gets split, or the user asks for help. Tell them; don't keep adding to it.
 

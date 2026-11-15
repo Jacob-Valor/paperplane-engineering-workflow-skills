@@ -1,0 +1,37 @@
+{
+  "argv": [
+    "tests/eval/omp_bridge.py"
+  ],
+  "skill_ref": null,
+  "no_skills": false,
+  "model": "omp completion:default",
+  "judge_model": "omp completion:slow",
+  "checks": true,
+  "baseline_context": null,
+  "fail_under": 1.0,
+  "scenarios": [
+    "s1",
+    "s15",
+    "s43",
+    "s50",
+    "s61"
+  ],
+  "reps": 3,
+  "trigger": false,
+  "skills_digest": "38f934c9a7b1",
+  "commit": "8b303c55c190bca0bfd765c0e31784ee70681a84",
+  "tree_dirty": true,
+  "resolved_models": {
+    "answer": [
+      "anthropic/claude-opus-5-5"
+    ],
+    "judge": [
+      "commandcode/deepseek/deepseek-v4.1-flash-ultrafast"
+    ]
+  },
+  "totals": {
+    "valid": 15,
+    "passed": 13,
+    "invalid": 0
+  }
+}

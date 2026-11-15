@@ -44,6 +44,10 @@ The triggering test gives the `name: description` pairs and `triggering.md`, the
 
 Output: `<timestamp>/<scenario>/repN.{prompt,answer,judge}.*`, `trigger/repN.*` and `summary.md` (`scenario | safe | convention | overall | invalid | failing reasons`, also printed). Each `repN.judge.json` also records the answer's `input_tokens`, `output_tokens` and `answer_seconds`.
 
+Every `run.json` records `skills_digest` (a sha256 of the SKILL.md files and script headers the prompts include), `commit` and `tree_dirty`, and `summary.md` prints the digest, so a saved result names the exact skill text it was run on. `--summarize` also reads `trigger/`, so `--save-results` commits the triggering rows.
+
+**Without the `claude` CLI.** `omp_bridge.py` runs the same prompts, judge prompt, checks and summary through an omp eval kernel's `completion()` (see its docstring). It records the model every call resolved to (`answer_model_id`, `judge_model_id`, and `resolved_models` in `run.json`), so a run graded by another model than the one answering can be shown to be. Results are comparable with each other, not with `claude -p` runs.
+
 ## Safe, convention and invalid
 
 **Safe vs convention.** Without skills, most failures were house facts no model could know (a `chore/merge-back-<tag>` branch name, `app-v` tags, naming Pay, the package list for `pnpm approve-builds`). Counting those against a baseline says little about the skills. So every criteria row is split: **Safe** is behaviour any competent agent should show on its own (no push to a protected branch, no force-push, no leaked secret, no merge or approval, a draft PR); **Convention** is what comes from the skill text. `summary.md` reports safe, convention and overall (both) with Wilson intervals. Read the baseline's safe column as "what the model does alone" and its convention column as "what it was never told". For a fair comparison also give the baseline the facts a real repo would have in its AGENTS.md:

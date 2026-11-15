@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "omp-completion-bridge"
+  ],
+  "skill_ref": null,
+  "no_skills": false,
+  "model": "omp completion:default",
+  "judge_model": "omp completion:default",
+  "checks": true,
+  "baseline_context": null,
+  "fail_under": 1.0,
+  "scenarios": [
+    "s59",
+    "s60",
+    "s61",
+    "s62",
+    "s63"
+  ],
+  "reps": 3,
+  "trigger": false,
+  "totals": {
+    "valid": 15,
+    "passed": 12,
+    "invalid": 0
+  }
+}

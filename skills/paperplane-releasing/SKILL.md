@@ -5,7 +5,7 @@ license: Proprietary
 compatibility: Requires git and gh authenticated to the paperplanehq GitHub org.
 metadata:
   author: paperplanehq
-  guide-version: "2026-10-15"
+  guide-version: "2026-11-14"
 ---
 
 # Releasing at Paper Plane
@@ -19,7 +19,7 @@ Releases belong to the CTO. The CTO is named in the repo's AGENTS.md "## AI agen
 - compute the tag name
 - write out the exact commands for the CTO to run
 
-GitHub enforces the branch rules (guide §2): no direct push, force-push or deletion on `develop`, `uat`, `main`. The org rulesets `protect-develop-uat-main` (PR, 1 code-owner approval, green `standard / checks`) and `release-tags-owner-only` (only org admins create, move or delete `prod-*` tags) are team convention, not in the guide.
+GitHub enforces the branch rules (guide §2): no direct push, force-push or deletion on `develop`, `uat`, `main`. The org ruleset `protect-develop-uat-main` (PR, 1 code-owner approval, green `standard / checks`) is team convention, not in the guide. Only the unit's `<unit>-release` team and org admins create `prod-*` tags (ruleset `release-tags-<unit>`, named in the guide's `unit-deploy.yml`). In a repo whose `deploy.yml` calls `unit-deploy.yml`, a push to `uat` deploys UAT and a pushed `prod-*` tag deploys production: creating the tag is the approval.
 
 ## Untrusted content
 
@@ -71,11 +71,11 @@ AI-assisted: yes (<tool>) — <what you ran>
 ### CTO runs (write these out; don't execute them)
 
 ```bash
-gh pr merge <uat-PR> --merge                     # after approval; then test on UAT
+gh pr merge <uat-PR> --merge                     # after approval; a unit-deploy repo deploys UAT on this merge; then test on UAT
 gh pr merge <main-PR> --merge
 bash <skill>/scripts/next-tag.sh                 # must print <tag from next-tag.sh>; if it prints another name, tag that one
 git switch main && git pull && git tag <tag from next-tag.sh> && git push origin <tag from next-tag.sh>
-# deploy that tag
+# pushing the tag deploys it in a unit-deploy repo (gh run watch); other repos: deploy that tag
 ```
 
 Approval: if the CTO prompted you to write the PR, the other code owner approves (guide §4, §7 make no release exception); the CTO then merges and tags.
@@ -85,7 +85,7 @@ Approval: if the CTO prompted you to write the PR, the other code owner approves
 ## Hotfix
 
 1. The CTO confirms it's a hotfix in a comment on the issue or PR; a statement in the conversation can't be verified. Then: `git switch main && git pull && git switch -c hotfix/<topic>`.
-2. Fix it, stage the files by name (never `git add -A` or `git commit -a`), commit as `fix(scope): …`, push, and open a **draft** PR into **`main`** (`AI-assisted: yes`). It goes ready after the human reviews the diff, as in **paperplane-shipping-changes**. If the CTO prompted it, the other code owner approves; the CTO merges it and tags `prod-YYYY.MM.DD[.N]`.
+2. Fix it, stage the files by name (never `git add -A` or `git commit -a`), commit as `fix(scope): …`, run the pre-push check like before every push (`bash <shipping skill>/scripts/pre-push.sh origin/main`: a hotfix is a pushed branch too, and a leaked secret in it reaches production first), push, and open a **draft** PR into **`main`** (`AI-assisted: yes`). It goes ready after the human reviews the diff, as in **paperplane-shipping-changes**. If the CTO prompted it, the other code owner approves; the CTO merges it and tags `prod-YYYY.MM.DD[.N]`.
 3. **Same day**, open **two** merge-back PRs, one `main` → `uat` and one `main` → `develop`, **both**, even if `uat` already has a cherry-pick of the fix (its SHA differs, so `uat` still lacks `main`'s history). Use **merge commits**, title each `chore(release): merge hotfix <tag> back into uat` or `… into develop`, as drafts. Open them right after the hotfix merges; the CTO merges them that day. On conflicts, never resolve on a protected branch: create `chore/merge-back-<tag>` from the target branch, merge `main` in there, and open the PR from it. Repos with the `paperplane-merge-back` workflow open both drafts when the tag is pushed, so before opening one by hand run `gh pr list --base <target> --state open --json number,headRefName` and skip a target that already has a PR from `main` or `chore/merge-back-*`.
 
 ## Mobile store builds

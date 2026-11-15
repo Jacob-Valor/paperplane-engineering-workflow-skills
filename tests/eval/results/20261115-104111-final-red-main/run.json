@@ -1,0 +1,29 @@
+{
+  "argv": [
+    "omp-completion-bridge"
+  ],
+  "skill_ref": "main",
+  "no_skills": false,
+  "model": "omp completion:default",
+  "judge_model": "omp completion:slow",
+  "checks": true,
+  "baseline_context": null,
+  "fail_under": 1.0,
+  "scenarios": [
+    "s59",
+    "s60",
+    "s63",
+    "s64",
+    "s65"
+  ],
+  "reps": 3,
+  "trigger": false,
+  "skills_digest": "f90d5e82d889",
+  "commit": "3f8f783a528319600048c8561aa77d7f0da9c25f",
+  "tree_dirty": false,
+  "totals": {
+    "valid": 15,
+    "passed": 6,
+    "invalid": 0
+  }
+}
