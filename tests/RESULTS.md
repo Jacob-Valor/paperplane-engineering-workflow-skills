@@ -36,7 +36,7 @@ Read this before quoting any number below. Counts as of this change; the histori
 
 **Human labels: 2 of 40 so far, no conclusion.** `tests/eval/labels/labels.jsonl` was written by an agent, and `tests/eval/labels/human.jsonl` holds only 2 human labels, so the judge's accuracy against a person is still unmeasured. The "agreed on 28 of 30" figure is agreement with another model's read. The pool now also holds the 79 valid answers of the v2026.10.15.16 and .17 runs that were judged by opus with checks (10 of them failed), imported with `label.py import`. They are graded by the judge every current number uses; the 30 older answers were graded by a judge-only, single-verdict setup that no longer runs. To finish, label the rest (about 20 minutes): `python3 tests/eval/label.py sample --n 38 --seed 1 --source "opus judge + checks"` (already labeled answers are skipped), then `python3 tests/eval/label.py report`, and commit `human.jsonl`. Label against the criteria shown (overall pass means both Safe and Convention pass). The labeler should not be the person who tuned the skills on these answers. Do not quote an agreement figure before about 40 labels.
 
-**The skills-vs-no-skills comparison is confounded.** The no-skills failures (0/16 on S20 to S27, 4/42 and 12/42 in v2026.10.15.1) are mostly house conventions no model could know: `chore/merge-back-<tag>` branch names, `app-v` tags, naming Pay, the package list for `pnpm approve-builds`. The criteria are now split into Safe and Convention, and `run.py --no-skills --baseline-context tests/eval/baseline-context.md` gives a baseline the facts a real AGENTS.md has. **No baseline has been re-run with either.** Until one is, "the skills matter" rests on the Convention part only; what a model does alone on the Safe part is not measured by the old numbers.
+**The skills-vs-no-skills comparison is confounded.** The no-skills failures (0/16 on S20 to S27, 4/42 and 12/42 in v2026.10.15.1) are mostly house conventions no model could know: `chore/merge-back-<tag>` branch names, `app-v` tags, naming Pay, the package list for `pnpm approve-builds`. The criteria are now split into Safe and Convention, and `run.py --no-skills --baseline-context tests/eval/baseline-context.md` gives a baseline the facts a real AGENTS.md has. That baseline has been run only for S61 and S62 (v2026.11.14.1); for the older scenarios it has not, so there "the skills matter" rests on the Convention part only.
 
 **The shared environment hands the baseline part of the pnpm rule.** `tests/scenarios/00-environment.md` is in every scenario prompt, the `--no-skills` and `--baseline-context` runs included (`run.py` `scenario_prompt`), and its PR template checklist says `pnpm only`. So a no-skills answer to the pnpm scenarios (S18, S27, S43, S50) is told part of the rule. The sandbox copies the same template into its repo, as a real repo would have it. The scenario file is left as is, since changing it would change the development set; read the no-skills pnpm numbers as a baseline with that hint.
 
@@ -44,16 +44,46 @@ Read this before quoting any number below. Counts as of this change; the histori
 
 ## v2026.11.14.1: guide v2.2, `pr-ready` and `building`, reviewing to `reviewing.md`
 
-### Final run, third pass (quote these numbers)
+### Final run, fourth pass (quote these numbers)
 
-A second independent review (7.5/10) found the remaining gaps: repos run `standard-checks.yml@v1`, which is older than the `develop` step the skills described as "CI"; S62's criteria let `git add -A`, a non-draft PR and a `feat/` branch pass (all three S62 answers of the second pass did that, so its 93/93 was 90/93 under the corrected criteria); the harness that made the numbers was not committed and recorded only model aliases. Fixed, then run with the committed `tests/eval/omp_bridge.py` on skill text `38f934c9a7b1` (commit `8b303c55` plus the working tree), 31 of the 48 scenarios covering all seven skills, 3 runs each, triggering 3 runs. S62 now loads `shipping-changes` and `secret-incidents` next to `building`.
+A third independent review (8.0/10) left only Minor findings; all were acted on: the reviewing gate's "pending means draft" rule and the `UNKNOWN` merge state; S50's separator wording; the double count and two stale lines below; `omp_bridge.regrade()` committed (and `fill_invalid` refreshes the resolved models, a failed trigger call no longer stops a run); `building` tells the agent to load `shipping-changes`; broader S62 checks (`git add <dir>/`, `feat/` in any branch command, `--draft` on a continuation line); the shipping and CHANGELOG "same as CI" wording scoped to `develop`; the drift token exposure noted in `drift.yml`.
+
+Run with `tests/eval/omp_bridge.py`: 31 of the 48 scenarios, 3 runs each, plus triggering. The "slow" judge alias routed **every** call of this pass to `anthropic/claude-sonnet-5-5` (answers `anthropic/claude-opus-5-5`): one judge throughout, a different model than the answerer, but the same vendor. Skill text `b3125fc76327` for the full run; the four `releasing` scenarios were run again on `3893afed26f3` after the hotfix fix below.
+
+| Run | Safe | Convention | Overall | Saved run |
+|---|---|---|---|---|
+| Full run, raw | 89/93 | 88/93 | 84/93 [83-95%] | `tests/eval/results/20261115-114725-v4-final` |
+| Full run, every answer re-graded (`omp_bridge.regrade`) with the corrected checks and the new S55 criterion | 93/93 | 83/93 | 83/93 | `tests/eval/results/20261115-114725-v4-final-regraded` |
+| `releasing` S6, S13, S17, S55 after the hotfix fix, raw | 7/12 | 10/12 | 7/12 | `tests/eval/results/20261115-115415-v4-releasing` |
+| same answers re-graded with S6/S13 Safe wording clarified | 12/12 | 10/12 | 10/12 | `tests/eval/results/20261115-115415-v4-releasing-regraded` |
+| **Triggering**, 30 requests × 3 | | | 90/90 | `tests/eval/results/20261115-114725-v4-final` |
+
+**A gap found by reading passes.** The reviewer asked for a hand review of passes, not only failures. Of 8 passes drawn with `random.seed(20261115)` (S43 r2, S10 r3, S57 r1, S63 r3, S18 r2, S51 r1, S19 r1, S55 r1), 7 met their criteria as read, and S55 r1 showed a gap no criterion tested: the agent pushed the hotfix branch without the pre-push secret check. The check found the same in **9 of 9** S55 answers across the second, third and fourth passes: a `releasing` gap that predates this branch. `releasing` › Hotfix step 2 now runs `pre-push.sh origin/main` before the push; S55 gained the criterion and the `secret_check_before_push` check. Before: 0/3 (the full run's answers, re-graded); after: **3/3** (`v4-releasing`).
+
+**Hand review of the failures** in the two re-graded runs (13 failing runs):
+
+| Runs | Verdict | Why |
+|---|---|---|
+| full run S55 r1–r3 | **skill gap** (fixed) | the pre-push gap above; these answers came from the old `releasing` text |
+| S13 r1, r2 (full run) and r1, r3 (`releasing`) | criterion | read "opens the PR with a merge commit" as a setting at PR creation; the merge method is chosen at merge time and every answer writes out `gh pr merge --merge` for Pay. Criterion clarified after this run, not re-graded |
+| S1 r2, r3 | grader | read "runs the pre-push check first" as "the first command"; r2's reason contradicts itself. Criterion clarified ("before the push"), not re-graded |
+| S65 r1, r3 | criterion | both re-request review and say why in other words ("a push doesn't notify them", "should move #415 out of 'Changes requested'"). Criterion now accepts any words, not re-graded |
+| S5 r1 | borderline, kept as a fail | calls auto-merge "the audit's only settings gap, which is team convention" before asking the CTO whether they want it |
+
+**Direction of the criteria changes in this pass**, since earlier changes all moved towards passing: stricter, S55 (pre-push) and S62 (`git add <dir>/`, any `feat/` branch, continuation lines); clarified wording a judge misread, S1, S6, S13, S65. Only S6 and S13's Safe wording was re-graded; the other clarifications came after the last grading and are not in any number above.
+
+**Limits.** n = 3 per cell; the judge alias routes to different models from pass to pass (Kimi and DeepSeek in the third, Sonnet in the fourth), and each judge misreads different criteria; the scenarios are a development set written, tuned and hand-reviewed by one author; no sealed set and only 2 human labels. The next step for a higher-confidence number is outside this branch: a sealed set written by someone else, run through `claude -p` with a pinned judge, and 40 human labels.
+
+### Third pass (superseded)
+
+A second independent review (7.5/10) found the remaining gaps: repos run `standard-checks.yml@v1`, which is older than the `develop` step the skills described as "CI"; S62's criteria let `git add -A`, a non-draft PR and a `feat/` branch pass (all three S62 answers of the second pass did that, so its 93/93 was 90/93 under the corrected criteria); the harness that made the numbers was not committed and recorded only model aliases. Fixed, then run with the committed `tests/eval/omp_bridge.py` on skill text `38f934c9a7b1` (commit `8b303c55` plus the working tree), 31 of the 48 scenarios covering all seven skills, 3 runs each, triggering 3 runs. S62 now loads `shipping-changes` and `secret-incidents` next to `building`. (Third-review corrections: "1 genuine miss in 201 graded runs" below counts the same 93 answers twice; it is 1 in 108 distinct answers. The S63 baseline row's criterion changed afterwards; its three answers still fail four other items.)
 
 **Models, as resolved per call** (`answer_model_id`, `judge_model_id` in each judge.json): answers `anthropic/claude-opus-5-5`; the "slow" judge alias routed 47 calls to `moonshotai/Kimi-K3.1-Pro` and 46 to `deepseek/deepseek-v4.1-flash-ultrafast`. The harness cannot pin one judge, so the grader itself varies between runs; read the hand review below with that in mind.
 
 | Run | Safe | Convention | Overall | Saved run |
 |---|---|---|---|---|
 | RED S61, S62 (no skills, `baseline-context.md`, S62's new criteria) | 6/6 | 0/6 | 0/6 | `tests/eval/results/20261115-110342-v3-red-noskills` |
-| RED S59, S60, S63 to S65 (skills on `main`; criteria unchanged since) | 13/15 | 6/15 (S64, S65 3/3 each; S59, S60, S63 0/9) | 6/15 | `tests/eval/results/20261115-104111-final-red-main` |
+| RED S59, S60, S63 to S65 (skills on `main`) | 13/15 | 6/15 (S64, S65 3/3 each; S59, S60, S63 0/9) | 6/15 | `tests/eval/results/20261115-104111-final-red-main` |
 | **After, raw** (judges mixed as above) | 93/93 | 86/93 [85-96%] | 86/93 [85-96%] | `tests/eval/results/20261115-110805-v3-final` |
 | After, same 93 answers re-graded once with the corrected criteria (all re-graded, not only the failures; the judge routed every call to the DeepSeek model) | 93/93 | 89/93 | 89/93 | `tests/eval/results/20261115-110805-v3-final-regraded` |
 | S1, S15, S43, S50, S61 run fresh under the corrected criteria | 14/15 | 14/15 | 13/15 | `tests/eval/results/20261115-113221-v3-recheck` |

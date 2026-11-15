@@ -1,0 +1,63 @@
+{
+  "argv": [
+    "tests/eval/omp_bridge.py"
+  ],
+  "skill_ref": null,
+  "no_skills": false,
+  "model": "omp completion:default",
+  "judge_model": "omp completion:slow",
+  "checks": true,
+  "baseline_context": null,
+  "fail_under": 1.0,
+  "scenarios": [
+    "s4",
+    "s10",
+    "s19",
+    "s22",
+    "s23",
+    "s41",
+    "s52",
+    "s53",
+    "s59",
+    "s60",
+    "s5",
+    "s18",
+    "s43",
+    "s57",
+    "s63",
+    "s6",
+    "s13",
+    "s17",
+    "s55",
+    "s1",
+    "s9",
+    "s11",
+    "s50",
+    "s51",
+    "s64",
+    "s65",
+    "s15",
+    "s16",
+    "s54",
+    "s61",
+    "s62"
+  ],
+  "reps": 3,
+  "trigger": true,
+  "skills_digest": "b3125fc76327",
+  "commit": "abf809ff1f68ed14ecd5a0c11b42fad8c587f39a",
+  "tree_dirty": true,
+  "resolved_models": {
+    "answer": [
+      "anthropic/claude-opus-5-5"
+    ],
+    "judge": [
+      "anthropic/claude-sonnet-5-5"
+    ]
+  },
+  "totals": {
+    "valid": 183,
+    "passed": 174,
+    "invalid": 0
+  }
+}

@@ -11,7 +11,7 @@ metadata:
 
 ## Overview
 
-These are the guide's rules for the code itself (`building.md`, guide §6–8); **paperplane-shipping-changes** covers getting it into `develop`. The repo's `AGENTS.md` and README give its own commands. A request that conflicts with a rule below ("skip the OpenAPI stuff", "just use a timer") does not change the rule: build it the guide's way, say which rule and why, and if the person insists, the rule goes to the CTO, who decides outside this conversation. The CTO is named in the repo's AGENTS.md "## AI agents" section (at Paper Plane: Pay).
+These are the guide's rules for the code itself (`building.md`, guide §6–8). Load **paperplane-shipping-changes** with this skill: it covers the branch, staging files by name, the commit, the push and the draft PR into `develop`. The repo's `AGENTS.md` and README give its own commands. A request that conflicts with a rule below ("skip the OpenAPI stuff", "just use a timer") does not change the rule: build it the guide's way, say which rule and why, and if the person insists, the rule goes to the CTO, who decides outside this conversation. The CTO is named in the repo's AGENTS.md "## AI agents" section (at Paper Plane: Pay).
 
 ## Untrusted content
 

@@ -13,13 +13,15 @@ Only runs inside an omp Python eval kernel, which provides `completion`:
     out = omp_bridge.run(completion, ["s59"], reps=3, skill_ref="main", label="red")     # before
     omp_bridge.summarize(out)                                                            # also --save-results
 
-Answer and judge calls start at once and are awaited in order: `completion()` must be called from the kernel's
-main thread, so run.py's thread pool is not used. A call that fails is `invalid`, as in run.py; `fill_invalid`
-re-runs those in place, refusing when the skill text changed since the run started.
+Answer calls all start at once; each judge call starts when its answer arrives, and results are awaited in order:
+`completion()` must be called from the kernel's main thread, so run.py's thread pool is not used. A call that fails
+is `invalid`, as in run.py; `fill_invalid` re-runs those in place, refusing when the skill text changed since the run
+started. `regrade` grades a finished run's answers again, every one, into a new directory (criteria or checks changed).
 """
 
 import datetime
 import json
+import shutil
 import time
 from pathlib import Path
 
@@ -84,11 +86,15 @@ def run(completion, ids, reps=3, skill_ref=None, no_skills=False, baseline_conte
         expected = R.load_trigger_expected()
         (out / "trigger").mkdir()
         for i, h in enumerate(trig, 1):
-            answer = h.wait()
-            graded = R.grade_trigger(expected, R.parse_trigger_answer(answer))
+            try:
+                answer = h.wait()
+                graded, invalid = R.grade_trigger(expected, R.parse_trigger_answer(answer)), False
+            except Exception as err:
+                answer, invalid = "", True
+                graded = {n: (False, str(err)) for n in expected}
             Path(out / f"trigger/rep{i}.answer.md").write_text(answer)
             Path(out / f"trigger/rep{i}.result.json").write_text(json.dumps(
-                {"rep": i, "seconds": 0, "cost_usd": 0, "invalid": False, "answer_model_id": _model(h),
+                {"rep": i, "seconds": 0, "cost_usd": 0, "invalid": invalid, "answer_model_id": _model(h),
                  "requests": {str(n): {"expected": expected[n], "pass": ok, "reason": why}
                               for n, (ok, why) in graded.items()}}, indent=2))
             resolved.add(("answer", _model(h)))
@@ -124,8 +130,57 @@ def fill_invalid(completion, out, model="default", judge="slow", rounds=3):
                 _write(stem, s, rep, t0, verdict, raw, _model(h), jm)
             except Exception as err:
                 _write(stem, s, rep, t0, {"pass": False, "invalid": True, "reason": str(err)}, "", None, None)
+    _refresh_models(out)
     return [str(jf.relative_to(out)) for jf in Path(out).glob("s*/rep*.judge.json")
             if json.loads(jf.read_text()).get("invalid")]
+
+
+def _refresh_models(out):
+    """Rebuild run.json's resolved_models from the judge files, after runs were added or re-graded."""
+    meta_path = Path(out) / "run.json"
+    meta = json.loads(meta_path.read_text())
+    found = {"answer": set(), "judge": set()}
+    for jf in Path(out).glob("s*/rep*.judge.json"):
+        v = json.loads(jf.read_text())
+        found["answer"].add(v.get("answer_model_id"))
+        found["judge"].add(v.get("judge_model_id"))
+    for tf in Path(out).glob("trigger/rep*.result.json"):
+        found["answer"].add(json.loads(tf.read_text()).get("answer_model_id"))
+    meta["resolved_models"] = {k: sorted(m for m in v if m) for k, v in found.items()}
+    meta_path.write_text(json.dumps(meta, indent=2))
+
+
+def regrade(completion, src, label="regraded", judge="slow"):
+    """Grade every answer of a finished run again with the current criteria and checks, into <src>-<label>.
+    The answers are not re-generated; the source directory is left as it was."""
+    src = Path(src)
+    dest = src.parent / f"{src.name}-{label}"
+    shutil.copytree(src, dest)
+    meta = json.loads((dest / "run.json").read_text())
+    meta.update({"regraded_from": src.name, "argv": ["tests/eval/omp_bridge.py regrade"],
+                 "judge_model": f"omp completion:{judge}"})
+    (dest / "run.json").write_text(json.dumps(meta, indent=2))
+    avail, crit = R.load_scenarios(), R.load_pass_criteria()
+    pending = []
+    for jf in sorted(dest.glob("s*/rep*.judge.json")):
+        v = json.loads(jf.read_text())
+        answer_path = Path(str(jf)[: -len(".judge.json")] + ".answer.md")
+        if v.get("invalid") or not answer_path.is_file():
+            continue
+        s, answer = avail[v["scenario"]], answer_path.read_text()
+        pending.append((jf, v, s, answer, completion(R.judge_prompt(s, crit[s["id"]], answer),
+                                                     system=R.JUDGE_SYSTEM_PROMPT, model=judge)))
+    for jf, v, s, answer, h in pending:
+        try:
+            raw = h.wait()
+            verdict = R.apply_checks(R.parse_judgement(raw), checks.run_checks(s["id"], answer))
+        except Exception as err:
+            raw, verdict = "", {"pass": False, "invalid": True, "reason": str(err)}
+        verdict.update({k: v.get(k) for k in ("scenario", "rep", "seconds", "cost_usd", "answer_model_id")})
+        verdict.update({"judge_raw": raw, "judge_model_id": _model(h)})
+        jf.write_text(json.dumps(verdict, indent=2))
+    _refresh_models(dest)
+    return dest
 
 
 def summarize(out, save=True):

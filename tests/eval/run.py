@@ -757,7 +757,8 @@ def summary_table(scenario_results, trigger_results, ctx, wall):
             "- Rates are over valid runs. Invalid runs (claude CLI error, timeout, unreadable judge reply) are counted "
             "in `invalid`, never as passes or failures.",
             "- Intervals are Wilson 95%; with n <= 5 a cell is anecdotal.",
-            f"- Wall time: {wall:.0f}s · reported cost: ${cost:.2f}",
+            (f"- Wall time: {wall:.0f}s · reported cost: ${cost:.2f}" if wall else
+             "- Wall time and cost: not recorded (rebuilt with --summarize, or a runner that does not report them)"),
             f"- Raw answers and judgements: {display_path(ctx['out'])}", ""]
     return "\n".join(head + rows) + "\n", totals
 

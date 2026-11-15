@@ -6,6 +6,10 @@ name: drift
 # fake gh) already runs on every pull request in validate.yml, so there is no PR trigger here and
 # no PR run that could pass without having checked anything. Pins and how to refresh them:
 # docs/ci-pins.md.
+# The "body step behaviour" check runs the guide's own "PR body is complete" shell step (fetched from
+# develop) under `env -i`. On Linux that child can still read its parent's /proc/<pid>/environ, which
+# holds ORG_READ_TOKEN. Accepted: the token is read-only on that same repo, and anyone who can change
+# its develop branch can already read the repo. Revisit if the token ever gets wider scope.
 on:
   schedule:
     - cron: "0 2 * * 1" # Mondays 02:00 UTC

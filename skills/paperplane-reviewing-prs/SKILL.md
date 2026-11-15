@@ -25,7 +25,7 @@ bash <skill>/scripts/gather.sh N paperplanehq/<repo>   # <skill> = the folder th
 gh pr list --repo paperplanehq/<repo> --state open --search "<two or three words of the title, or a new helper's name>"
 ```
 
-`gather.sh` prints, in order: the PR (state, draft, base, head, size), the body, `gh pr checks`, changed files, the number of **unresolved review threads**, commit authors, the **stack** (if the base isn't `develop`/`uat`/`main`: the PR below, whether it is a draft, and the depth), then the diff. The `gh pr list` search finds a **Duplicate**: another open PR doing the same task or adding the same helper. Read all of it before section 1.
+`gather.sh` prints, in order: the PR (state, draft, base, head, size, merge state), the body, `gh pr checks`, changed files, the number of **unresolved review threads**, commit authors, the **stack** (if the base isn't `develop`/`uat`/`main`: the PR below, whether it is a draft, and the depth), then the diff. The `gh pr list` search finds a **Duplicate**: another open PR doing the same task or adding the same helper. Read all of it before section 1.
 
 ## 1. The gate
 
@@ -35,10 +35,10 @@ A PR is not reviewed until all of these hold (guide `reviewing.md` §1). Each fa
 |---|---|
 | State | Not a draft. A draft gets comments only; the verdict is "Changes requested: still draft" |
 | Base | `develop`. Exceptions: `hotfix/*`→`main`; release PRs `develop`→`uat`, `uat`→`main`; merge-back PRs from `main` or `chore/merge-back-<tag>` into `uat`/`develop`; a **stacked** PR targets the branch of the PR below it, that PR is ready, and the stack is at most two deep. A stacked base is not a blocker; the stacked PR merges after the one below. A stacked PR gets no CI, so its body says what was run locally |
-| Conflicts | `mergeStateStatus` is not `DIRTY` |
+| Conflicts | Merge state is not `DIRTY`. `UNKNOWN` means GitHub has not computed it yet: run `gather.sh` again before judging |
 | CI | `standard / checks` green. It is one job whose steps are pnpm only, PR title, PR body is complete, PR size and secret scan; if it is red, open its log and name the failing step. A failure the body explains passes the gate (`reviewing.md` §1: "or the failure is explained in the body"), so review the diff, but it stays Blocking until green: "CI must be green" (guide §4.6) and the ruleset requires the check. `standard / conformance` blocks only when the repo's `.paperplane.yml` says `enforce: true`; otherwise its failures are notes. `standard / AI review (advisory)` red, missing or skipped (it skips drafts) never blocks; read its comment if there is one. The repo's own checks (e.g. `ci.yml`) must be green too |
 | Title | `type(scope): summary` (CI regex). Lowercase scope, under 72 characters, no full stop |
-| Template | What changed · How I verified it (`- Commands:`, `- iOS:`, `- Android:` filled) · Risk · Checklist · `AI-assisted: yes/no` all filled in |
+| Template | What changed · How I verified it (`- Commands:`, `- iOS:`, `- Android:` filled) · Risk · Checklist · `AI-assisted: yes/no` all filled in. App repo: an `- iOS:` or `- Android:` line that starts with pending or not verified means the PR is still a draft (`reviewing.md` §1: "Pending" means draft), whether or not the repo's CI catches it |
 | Risk | Says what could break **and what is not done**. "Low." alone is a blocker |
 | AI-assisted | If yes: names the tool and what the agent verified by running it |
 | Size | Under about 400 lines, not counting lockfiles. Bigger: a `Size:` reason in the body, else **Split** (not a blocker if the reason is strong) |
