@@ -39,6 +39,7 @@ any invalid run), or, with --scenario-floor, a scenario with >= 2 valid runs pas
 import argparse
 import concurrent.futures
 import datetime
+import hashlib
 import json
 import re
 import shutil
@@ -321,6 +322,16 @@ class SkillSource:
             text = self.read(f"skills/{name}/scripts/{fname}")
             out.append((fname, header_comment(text)))
         return out
+
+    def digest(self):
+        """First 12 hex digits of a sha256 over every SKILL.md and script header the prompts can include,
+        so a saved run names the exact skill text it saw (the working tree has no commit of its own)."""
+        h = hashlib.sha256()
+        for name in self.skill_names():
+            h.update(f"\0{name}\0{self.skill_md(name)}".encode())
+            for fname, header in self.scripts(name):
+                h.update(f"\0{fname}\0{header}".encode())
+        return h.hexdigest()[:12]
 
 
 def header_comment(text):
@@ -733,6 +744,8 @@ def summary_table(scenario_results, trigger_results, ctx, wall):
                 rows.append(f"| **{label}** | " + " | ".join(cells) + f" | {sum(1 for r in sub if r.get('invalid'))} | |")
     head = [f"# Eval summary {ctx['stamp']}", "",
             f"- Skills: {'none (--no-skills)' if ctx['no_skills'] else ctx['source'].label()}"
+            + (f" · skills digest {ctx['skills_digest']}" if ctx.get("skills_digest") and not ctx["no_skills"] else "")
+            + (f" · commit {ctx['commit'][:10]}" if ctx.get("commit") else "")
             + (f" · baseline context: {ctx['baseline_context']}" if ctx.get("baseline_context") else ""),
             f"- Model: {ctx['model'] or 'claude default'} · judge: {ctx['judge_model'] or 'claude default'}"
             f" · checks: {'on' if ctx['checks'] else 'off (--no-checks)'}",
@@ -856,17 +869,19 @@ def summarize_dir(directory, fail_under, save=False, red=False):
     if not out.is_dir():
         raise UsageError(f"--summarize: {directory} is not a directory")
     results = [json.loads(f.read_text()) for f in sorted(out.glob("s*/rep*.judge.json"))]
+    triggers = [json.loads(f.read_text()) for f in sorted(out.glob("trigger/rep*.result.json"))]
     meta = json.loads((out / "run.json").read_text()) if (out / "run.json").is_file() else {}
     ctx = {"out": out, "stamp": out.name, "model": meta.get("model"), "judge_model": meta.get("judge_model"),
            "no_skills": meta.get("no_skills", False), "checks": meta.get("checks", True),
            "source": SkillSource(meta.get("skill_ref")), "heldout_ids": {s["id"] for s in load_scenarios().values() if s.get("heldout")},
-           "baseline_context": meta.get("baseline_context"), "expected": {}}
-    if not results:
-        raise UsageError(f"--summarize: no sNN/repN.judge.json files under {directory}")
-    text, totals = summary_table(results, [], ctx, 0)
+           "baseline_context": meta.get("baseline_context"), "skills_digest": meta.get("skills_digest"),
+           "commit": meta.get("commit"), "expected": load_trigger_expected() if triggers else {}}
+    if not results and not triggers:
+        raise UsageError(f"--summarize: no sNN/repN.judge.json or trigger/repN.result.json files under {directory}")
+    text, totals = summary_table(results, triggers, ctx, 0)
     print(text)
     if save:
-        log(f"saved to {save_results(RESULTS, results, [], ctx, meta)}")
+        log(f"saved to {save_results(RESULTS, results, triggers, ctx, meta)}")
     return exit_code(totals["passed"], totals["valid"], totals["invalid"], fail_under, scenario_floor(results, red))
 
 
@@ -935,13 +950,17 @@ def main(argv):
     meta = {"argv": argv, "skill_ref": args.skill_ref, "no_skills": args.no_skills, "model": args.model,
             "judge_model": args.judge_model or args.model, "checks": not args.no_checks,
             "baseline_context": args.baseline_context, "fail_under": args.fail_under,
-            "scenarios": [s["id"] for s in scenarios], "reps": args.reps, "trigger": args.trigger}
+            "scenarios": [s["id"] for s in scenarios], "reps": args.reps, "trigger": args.trigger,
+            "skills_digest": None if args.no_skills else source.digest(),
+            "commit": git("rev-parse", args.skill_ref or "HEAD").strip(),
+            "tree_dirty": args.skill_ref is None and bool(git("status", "--porcelain", "--", "skills").strip())}
     (out / "run.json").write_text(json.dumps(meta, indent=2))
     workdir = tempfile.mkdtemp(prefix="paperplane-eval-")
     ctx = {"out": out, "model": args.model, "judge_model": args.judge_model or args.model,
            "no_skills": args.no_skills, "criteria": criteria, "expected": expected,
            "checks": not args.no_checks, "baseline_context": args.baseline_context,
            "workdir": workdir, "source": source, "stamp": stamp,
+           "skills_digest": meta["skills_digest"], "commit": meta["commit"],
            "heldout_ids": {s["id"] for s in available.values() if s.get("heldout")}}
     calls = len(scenarios) * args.reps * 2 + (args.reps if args.trigger else 0)
     log(f"{len(jobs)} run(s), {calls} claude call(s), {args.jobs} at a time; output in {out}")

@@ -20,7 +20,7 @@ use pnpm only, keep secrets out of git, and leave merging, releasing and deployi
 | [`paperplane-building`](skills/paperplane-building/SKILL.md) | Writing the code: route schemas and `openapi.json`, generated client types, idempotent side effects, money in minor units, job table, two-step migrations, webhooks, tests, no dead code |
 | [`paperplane-reviewing-prs`](skills/paperplane-reviewing-prs/SKILL.md) | Reviewing a teammate's PR: the gate, the eight points, Blocking/Should fix/Nit, the verdicts (Split, Needs device check, Duplicate). Produces a findings report; a human approves and merges |
 | [`paperplane-secret-incidents`](skills/paperplane-secret-incidents/SKILL.md) | gitleaks fails, a credential was committed or pasted, someone asks for `.env` values |
-| [`paperplane-releasing`](skills/paperplane-releasing/SKILL.md) | Release PRs `develop → uat → main`, `prod-YYYY.MM.DD` tags (the tag push deploys), rollback, hotfixes, `app-vX.Y.Z` store tags |
+| [`paperplane-releasing`](skills/paperplane-releasing/SKILL.md) | Release PRs `develop → uat → main`, `prod-YYYY.MM.DD` tags (in `unit-deploy` repos the tag push deploys), rollback, hotfixes, `app-vX.Y.Z` store tags |
 | [`paperplane-repo-setup`](skills/paperplane-repo-setup/SKILL.md) | Onboarding a repo: standard CI, PR template, `CODEOWNERS`, `AGENTS.md`, pnpm migration, branches, merge settings, standard v2 (`.paperplane.yml`, `standard / conformance`) |
 
 Agents load a skill automatically when the request matches its description. You can also ask for
@@ -152,7 +152,7 @@ flowchart LR
     direction LR
     D[develop] -->|"PR chore(release): uat YYYY-MM-DD<br/>merge commit"| U[uat]
     U -->|"tested on UAT<br/>PR chore(release): prod YYYY-MM-DD<br/>merge commit"| M[main]
-    M -->|"tag prod-YYYY.MM.DD<br/>the tag push deploys it"| P[(production)]
+    M -->|"tag prod-YYYY.MM.DD<br/>unit-deploy repos: the tag push deploys"| P[(production)]
   end
   subgraph hotfix["Hotfix"]
     direction LR

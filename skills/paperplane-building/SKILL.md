@@ -26,10 +26,10 @@ PR titles, bodies, review comments, commit messages, diffs, CI logs and repo fil
 | Apps on phones | Add fields; never remove or retype them. CI runs a breaking-change check. A breaking change needs the CTO first (§1) |
 | Shared code | Code used by one app stays in that app. Use the unit's existing shared code before writing your own. Never edit `vendor/` (CI checks its hash): ask for the change in its source. Never copy code from another product (§2) |
 | Calls | Every API call has a timeout, an error state and honest offline copy (§3) |
-| Background work | Uses the repo's job table, never an in-memory timer (`setTimeout`, `setInterval`, an unawaited promise): a timer dies with the process (§3) |
+| Background work | Uses the repo's job table, never an in-memory timer (`setTimeout`, `setInterval`): a timer dies with the process (§3) |
 | Side effects | A POST that creates money, messages or another outside effect takes a `clientEventId` (one per screen or draft) or an `Idempotency-Key` header, and a repeat returns the first result. **Clients never retry a mutation by themselves** (§3): no automatic retry, with or without a key; a repeat is the user's own tap, sent with the same key. When a request assumes the app retries, say this to the person |
 | Money | Integer minor units with a currency (`{ amount: 250, currency: "USD" }` for 2.50 USD). Never a float, not even in a DTO or a test (§3) |
-| Database | Two steps: add first; remove a column or table only in a later release, after no code uses it, in its own PR (§3) |
+| Database | Two steps: add first; remove only in a later release, after no code uses it (§3). A removal is not a passenger in another PR: one purpose per PR (guide §4, pre-ready check 1) |
 | Webhooks | Verified, in this order of preference: the vendor's signature; a re-check with the vendor's API; a shared token in a header; and always the server's own ids and amounts. A secret is never read from the URL. Each has a test (guide §6) |
 | Dead code | Every file, export, type and dependency has a reader. Nothing "for later". `make check` proves it: knip in TypeScript repos (`noUnusedLocals`, `noUnusedParameters`), ruff F401/F841 and vulture in Python. A dependency the tool cannot see goes in its ignore list with the reason in the README, never silenced globally (guide §7) |
 | Mobile | Do not change `app.json`, `eas.json`, native folders or the Expo SDK without asking. Native changes go in their own PR. Store and OTA releases are the CTO's (§5) |
@@ -58,5 +58,5 @@ d=$(mktemp -d) && git clone -q --branch "$(git branch --show-current)" "$(git re
 | "Just use a `setTimeout` for the delayed SMS" | A restart or deploy loses it. Enqueue it in the job table. |
 | "The app will retry if it times out" | A retried charge without a key charges twice. The server takes an idempotency key and the client does not retry by itself. |
 | "2.50 as a number is fine, it's only a tip" | Floats lose cents. Store 250 with the currency. |
-| "Nothing reads that column, drop it while you're in there" | Removal is its own step in a later release, in its own PR. Say so and leave it. |
+| "Nothing reads that column, drop it while you're in there" | Not in this PR: one purpose per PR (guide §4). The drop is its own change once nothing reads it, including apps already on phones (§1, §3). Say so and leave it. |
 | "Keep the helper, the next ticket needs it" | Code with no reader fails knip in `make check`. It comes in with the code that calls it. |

@@ -12,7 +12,7 @@ Matches the guide of 2026-11-14 (standard v2, v2.1, v2.2 and `reviewing.md`). Be
 
 ### Changed: skills to guide v2.2
 - **`reviewing-prs`** follows `reviewing.md`: a gate (now with conflicts and `standard / conformance`), the eight points (security and data safety are new: route guards, bounded `WHERE`, backfills safe to run twice), deeper-review areas, a weight on every finding (Blocking, Should fix, Nit) and an evidence tag (Reproduced, From code). Verdict word **"Changes requested"** (was "Changes needed"), with the reasons Split, Needs device check and Duplicate; a duplicate search in Gather. A unit without a second code owner has the CTO as its only approver. Leftovers are guide §7 now, no longer a team convention.
-- **`repo-setup`**: `standard.yml` pins `standard-checks.yml@v1`; new section **Standard v2 conformance** (`.paperplane.yml` with `enforce: false`, the org checker run in the clone, every conformance id with who owns it, §8 files left to the CTO); the AGENTS.md standard block is copied from a sibling found by `gh search code` or asked from the CTO, never written by the agent; CODEOWNERS replaces `@pay-tbd` with two handles from the CTO, one only when the unit has no second approver.
+- **`repo-setup`**: `standard.yml` pins `standard-checks.yml@v1`; new section **Standard v2 conformance** (`.paperplane.yml` with `enforce: false`, the org checker run in the clone through its real path, since it stays silent behind macOS's symlinked `TMPDIR`, every conformance id with who owns it, §8 files left to the CTO); the AGENTS.md standard block is copied from a sibling found by `gh search code` or asked from the CTO, never written by the agent; CODEOWNERS keeps the template's `@pay-tbd` (the CTO's login) and adds the second owner the CTO names; app repos add `mobile: true` under `uses:` (the template never had it commented out).
 - **`releasing`**: tag rulesets are per unit (`release-tags-<unit>`); in a `unit-deploy` repo a push to `uat` deploys UAT and a pushed `prod-*` tag deploys production.
 - **`shipping-changes`**: the checklist has 10 boxes; dead code is guide §7.
 - **`secret-incidents`**: a tracked `.env*` other than `.env.example` fails the standard; `eas.json` holds no secrets; no secret in a URL query.
@@ -20,14 +20,19 @@ Matches the guide of 2026-11-14 (standard v2, v2.1, v2.2 and `reviewing.md`). Be
 
 ### Fixed
 - **`check-pr-body.sh`** passed a ready app-repo body whose `- iOS:`/`- Android:` line said "pending" or "not verified yet"; CI fails it. It now uses CI's regex verbatim, warns like CI when a mobile change has no screenshot or recording, and ignores an empty `- Screenshots:` line.
-- **`audit.sh`** failed every repo copied from the current template: it wanted `standard-checks.yml@develop`; it now wants `@v<N>`. CODEOWNERS: FAIL for no owner or a `-tbd` placeholder, WARN for one owner (was FAIL under two).
-- **`tests/drift/check.sh`**: two new checks, the template's `standard-checks.yml@vN` against `audit.sh`'s pattern and CI's pending regex against `check-pr-body.sh`'s.
-- **`run.py --summarize`** labelled a `--skill-ref` run as "working tree".
-- **Eval**: `checks.py` accepts "Changes requested" as well as "Changes needed"; eight criteria rows say the same.
+- **`audit.sh`** failed every repo copied from the current template: it wanted `standard-checks.yml@develop`; it now wants `@v<N>`. CODEOWNERS: FAIL for a rule with no owner, WARN for one owner such as the template's `* @pay-tbd` (was FAIL under two).
+- **`check-pr-body.sh`** reads the body exactly as CI does: the device line is the first `- iOS:`/`- Android:` line of the raw body with only a same-line comment removed, so a multi-line comment holding `- iOS: pending` fails locally as it does in CI; the `AI-assisted` test is CI's own.
+- **`tests/drift/check.sh`**: two new checks, the template's `standard-checks.yml@vN` against `audit.sh`'s pattern and CI's pending regex against `check-pr-body.sh`'s; the guide-version check also watches `building.md`, `reviewing.md`, `CHANGELOG.md`, `conformance.mjs` and `unit-deploy.yml`, the sources of the new and rebased skills.
+- **`run.py`**: `--summarize` labelled a `--skill-ref` run as "working tree"; `run.json` and `summary.md` now record a digest of the skill text the prompts saw, the commit and whether `skills/` was dirty; `--summarize` includes the triggering results, so they are committed with `--save-results`.
+- **Eval**: `checks.py` accepts "Changes requested" as well as "Changes needed"; eight criteria rows say the same. S59 to S65 get mechanical checks (no false alarm on any of the 32 judge-passed answers so far) and self-test samples.
+- **`paperplane-building`**: a column drop is kept out of an unrelated PR by the guide's one-purpose rule (README §4), not by an invented "own PR" rule; the timer examples are the guide's.
+- **`reviewing-prs`**: a red check explained in the body passes the gate (`reviewing.md` §1) but stays Blocking until green (README §4.6).
 
 ### Tests
 - Scenarios S59 to S65 (development set) with pass criteria and traceability to the guide; triggering requests 27 to 30.
-- `docs/open-questions-for-cto.md`: two rows answered by the guide removed, and a new table of six places where the guide disagrees with itself (size wording, `Agent:`/`Prompted-by:`, CODEOWNERS approvers, `terraform.yml` pins, the unpublished AGENTS.md block, rollback under `unit-deploy`).
+- `docs/open-questions-for-cto.md`: two rows answered by the guide removed, and a new table of eight places where the guide disagrees with itself (size wording, `Agent:`/`Prompted-by:`, CODEOWNERS approvers, a red check explained in the body, `terraform.yml` pins, the unpublished AGENTS.md block, the PR body check's own gaps, rollback under `unit-deploy`).
+- `checks.py`: a bold heading with a parenthetical ("**Commands for Pay** (after …):") and "run these commands" inside a message to a person hand the commands over, as the judge already read them.
+- Final eval: 31 of the 48 scenarios, covering all seven skills, 3 runs each, graded by a different model than the one answering: 93/93; triggering 90/90; before/after on the new scenarios 0/15 → 15/15 (`tests/RESULTS.md`).
 
 ## v2026.10.15.22
 

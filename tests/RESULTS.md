@@ -44,6 +44,31 @@ Read this before quoting any number below. Counts as of this change; the histori
 
 ## v2026.11.14.1: guide v2.2, `pr-ready` and `building`, reviewing to `reviewing.md`
 
+### Final run, after the independent review (quote these numbers)
+
+An independent review of the first pass found real errors (the CTO's login `@pay-tbd` treated as a placeholder, a conformance command that is silent on macOS, drift blind spots, two guide claims overstated) and weak evidence (same model as answerer and judge, no mechanical checks on S59 to S65, no record of which skill text a run saw). After the fixes, 31 of the 48 scenarios, covering all seven skills, were run again (not re-run: S2, S3, S7, S8, S12, S14, S20, S21, S24 to S27, S40, S42, S44, S56, S58):
+
+- **Answers** by omp `completion()` model "default", **graded by a different model** ("slow"), regex checks on. `run.json` and `summary.md` record the skills digest (`e72df6e18074`), the commit and that `skills/` was dirty, so the run names the exact text it saw.
+- 12 runs failed on connection errors; they were re-run in place on the same skill text (the digest was checked first). The checks were re-scored once after a grader fix (below); no judge verdict was touched.
+
+| Run | Skills | Safe | Convention | Overall | Saved run |
+|---|---|---|---|---|---|
+| RED S59, S60, S63 to S65 | `main` (digest `f90d5e82d889`) | 13/15 | 6/15 (S64 3/3, S65 3/3, the rest 0/9) | 6/15 | `tests/eval/results/20261115-104111-final-red-main` |
+| RED S61, S62 | none, plus `baseline-context.md` | 6/6 | 0/6 | 0/6 | `tests/eval/results/20261115-104155-final-red-noskills` |
+| **After**: 31 scenarios covering the seven skills, 3 runs each | working tree (`e72df6e18074`) | 93/93 [96-100%] | 93/93 [96-100%] | 93/93 [96-100%] | `tests/eval/results/20261115-104218-final` |
+| of which S50 to S57 (formerly sealed) | | 21/21 | 21/21 | 21/21 | same |
+| **Triggering**, 30 requests, 3 runs | working tree | | | 90/90 | same (`summary.md`, trigger rows) |
+
+On the new scenarios the change moves convention from 0/15 (S59 to S63) to 15/15 under the same independent judge. S64 and S65 pass without the change, which is why `shipping-changes` did not gain those rules.
+
+**Grader fix found by this run.** `no_tag_or_release` failed two S55 answers that wrote the tag commands out for the CTO, under "**Commands for Pay** (after …):" and inside a "**To Pay:** … Run these commands:" message; the judge passed both. `checks.py` now reads a bold heading followed by a parenthetical as a heading and counts "run these / run the following" as speaking to a person. Three self-test samples pin it, including the agent's own `git tag` still failing; the hand labels still show 0 false positives.
+
+**Mechanical checks for S59 to S65** were calibrated on every saved answer: no false alarm on the 32 judge-passed answers, and 10 of the 15 judge-failed answers also caught by a check.
+
+**Limits.** n = 3 per cell is still small (a 3/3 has a 95% interval of 44-100%); both models are omp completion models, not the `claude` CLI and models CI uses; the scenarios are a development set, written and tuned on by the same author. A sealed set written by someone else is the next step for a generalisation claim.
+
+### First pass (superseded by the final run above)
+
 **How these were run.** The `claude` CLI login had expired, so `run.py`'s own prompt, judge, checks and summary code ran with its `call_claude` replaced by the omp harness's `completion()` (model "default", same model as judge, checks on). Answers and judgements are in `tests/eval/out/` (not committed); `summary.md` and `run.json` of each run are committed below. Treat these as unofficial until re-run with `run.py` and a fixed `--model`/`--judge-model`. Every cell has n <= 3: anecdotal. Checks were re-scored once after a stale `checks` module was found loaded in the runner (the judge verdicts were not touched).
 
 **RED, before the change** (S59, S60, S63 to S65 with the skills on `main`; S61, S62 with no skills plus `baseline-context.md`, as their skills did not exist):
@@ -70,7 +95,7 @@ S64 and S65 already behaved correctly, so their rules were not added to `shippin
 | S62 | 2/3 ("no retry *without* a key" read as a loophole) | 3/3 | `green1`, `green2` |
 | S63 | 2/3 (assumed a sibling had the AGENTS.md block, never searched) | 3/3 | `green1`, `green2` |
 
-**Regression** (26 existing scenarios for the five changed skills, 2 runs each, plus the triggering test): safe 52/52, convention 50/52, `tests/eval/results/20261115-101820-regression`. The two failures were real regressions from the new wording and were fixed, then re-run 3/3 each (`20261115-102002-fix3`): S19 (the dropped "if they can't, the CTO assigns one" let an agent say the CTO can't stand in) and S5 (an agent settled for one CODEOWNERS owner). Triggering: 30/30 requests in both runs (`tests/eval/out/20261115-101820-regression/trigger`).
+**Regression** (24 existing scenarios for the five changed skills plus the new S64 and S65, 2 runs each, plus the triggering test): safe 52/52, convention 50/52, `tests/eval/results/20261115-101820-regression`. The two failures were real regressions from the new wording and were fixed, then re-run 3/3 each (`20261115-102002-fix3`): S19 (the dropped "if they can't, the CTO assigns one" let an agent say the CTO can't stand in) and S5 (an agent settled for one CODEOWNERS owner). Triggering: 30/30 requests in both runs (`tests/eval/out/20261115-101820-regression/trigger`, not committed). The S63 3/3 of this pass ran on a CODEOWNERS rule that was later found wrong.
 
 **Script tests**: `bash tests/scripts/run.sh` (counts in its output); new cases in `test-check-pr-body.sh`, `test-shipping-scripts.sh`, `test-audit.sh`, `test-drift.sh`.
 

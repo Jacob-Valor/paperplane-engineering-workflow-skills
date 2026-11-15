@@ -84,7 +84,8 @@ fi
 
 # 3. No guide change is newer than any skill's guide-version.
 newest=""; newest_msg=""
-for p in README.md templates .github/workflows/standard-checks.yml; do
+for p in README.md building.md reviewing.md CHANGELOG.md templates .github/workflows/standard-checks.yml \
+  .github/workflows/unit-deploy.yml .github/actions/conformance/conformance.mjs; do
   line=$(gh api "repos/$repo/commits?sha=$ref&path=$p&per_page=1" \
     --jq '.[0] | select(. != null) | .commit.committer.date + " " + (.commit.message | split("\n")[0])') ||
     { bad "guide commits" "could not list commits for $p"; continue; }

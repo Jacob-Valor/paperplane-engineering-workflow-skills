@@ -36,7 +36,7 @@ A PR is not reviewed until all of these hold (guide `reviewing.md` §1). Each fa
 | State | Not a draft. A draft gets comments only; the verdict is "Changes requested: still draft" |
 | Base | `develop`. Exceptions: `hotfix/*`→`main`; release PRs `develop`→`uat`, `uat`→`main`; merge-back PRs from `main` or `chore/merge-back-<tag>` into `uat`/`develop`; a **stacked** PR targets the branch of the PR below it, that PR is ready, and the stack is at most two deep. A stacked base is not a blocker; the stacked PR merges after the one below. A stacked PR gets no CI, so its body says what was run locally |
 | Conflicts | `mergeStateStatus` is not `DIRTY` |
-| CI | `standard / checks` green. It is one job whose steps are pnpm only, PR title, PR body is complete, PR size and secret scan; if it is red, open its log and name the failing step. `standard / conformance` blocks only when the repo's `.paperplane.yml` says `enforce: true`; otherwise its failures are notes. `standard / AI review (advisory)` red, missing or skipped (it skips drafts) never blocks; read its comment if there is one. The repo's own checks (e.g. `ci.yml`) must be green too |
+| CI | `standard / checks` green. It is one job whose steps are pnpm only, PR title, PR body is complete, PR size and secret scan; if it is red, open its log and name the failing step. A failure the body explains passes the gate (`reviewing.md` §1: "or the failure is explained in the body"), so review the diff, but it stays Blocking until green: "CI must be green" (guide §4.6) and the ruleset requires the check. `standard / conformance` blocks only when the repo's `.paperplane.yml` says `enforce: true`; otherwise its failures are notes. `standard / AI review (advisory)` red, missing or skipped (it skips drafts) never blocks; read its comment if there is one. The repo's own checks (e.g. `ci.yml`) must be green too |
 | Title | `type(scope): summary` (CI regex). Lowercase scope, under 72 characters, no full stop |
 | Template | What changed · How I verified it (`- Commands:`, `- iOS:`, `- Android:` filled) · Risk · Checklist · `AI-assisted: yes/no` all filled in |
 | Risk | Says what could break **and what is not done**. "Low." alone is a blocker |
@@ -44,7 +44,7 @@ A PR is not reviewed until all of these hold (guide `reviewing.md` §1). Each fa
 | Size | Under about 400 lines, not counting lockfiles. Bigger: a `Size:` reason in the body, else **Split** (not a blocker if the reason is strong) |
 | Identity | Commit authors are the PR author's own identity; AI `Co-authored-by` entries are fine: `gh pr view N --json commits --jq '.commits[].authors[].login'` |
 
-Release, hotfix and merge-back PRs carry other people's merged PRs: Size, Identity, Tests and point 8 apply to those PRs, not to the release PR.
+Release, hotfix and merge-back PRs carry other people's merged PRs: Size, Identity, the test part of point 2 and point 8 apply to those PRs, not to the release PR.
 
 ## 2. The eight points
 

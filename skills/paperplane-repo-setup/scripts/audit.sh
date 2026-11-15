@@ -107,8 +107,8 @@ other=$(printf '%s\n' "$root" | grep -xE 'package-lock\.json|yarn\.lock|bun\.loc
 if [ -z "$other" ]; then report PASS pnpm-only "no npm/yarn/bun lockfile $on"
 else report FAIL pnpm-only "remove $other $on (pnpm only)"; fi
 
-# CODEOWNERS (GitHub reads .github/, the root or docs/): every rule names a real @owner, not the template's
-# placeholder (@pay-tbd). One owner is a WARN: until a unit has a second approver, the CTO is the only one.
+# CODEOWNERS (GitHub reads .github/, the root or docs/): every rule names an @owner. The template's @pay-tbd is
+# the CTO's real login. One owner is a WARN: until a unit has a second approver, the CTO is the only one.
 cpath=""
 if has "$dotgithub" CODEOWNERS; then cpath=.github/CODEOWNERS
 elif has "$root" CODEOWNERS; then cpath=CODEOWNERS
@@ -118,20 +118,18 @@ if [ -z "$cpath" ]; then
 elif ! owners=$(raw "$cpath"); then
   report FAIL codeowners "cannot read $cpath: $(lasterr)"
 else
-  rules=0 none="" tbd="" single=""
+  rules=0 none="" single=""
   while read -r pattern rest; do
     [ -n "$pattern" ] || continue
     rules=$((rules+1))
     ow=$(printf '%s\n' "$rest" | tr -s ' \t' '\n\n' | grep '^@')
-    ph=$(printf '%s\n' "$ow" | grep -iE -- '-tbd$' | paste -sd, -)
     if [ -z "$ow" ]; then none="$none $pattern"
-    elif [ -n "$ph" ]; then tbd="$tbd $pattern ($ph)"
     elif [ "$(printf '%s\n' "$ow" | wc -l)" -eq 1 ]; then single="$single $pattern"; fi
   done < <(printf '%s\n' "$owners" | tr -d '\r' | nocomments)
   if [ "$rules" -eq 0 ]; then report FAIL codeowners "no rules in $cpath"
-  elif [ -n "$none$tbd" ]; then
-    report FAIL codeowners "$cpath:${none:+ no @owner for:$none;}${tbd:+ placeholder owner for:$tbd;} name the real approver (the CTO until the unit has a lead)"
-  elif [ -n "$single" ]; then report WARN codeowners "$cpath: one @owner for:$single; add a second code owner when the unit has one"
+  elif [ -n "$none" ]; then
+    report FAIL codeowners "$cpath: no @owner for:$none; name the approver (the CTO until the unit has a second)"
+  elif [ -n "$single" ]; then report WARN codeowners "$cpath: one @owner for:$single; the guide allows the CTO as the only approver until the unit has a second; add a second code owner when the CTO names one"
   else report PASS codeowners "$cpath: $rules rule(s), each with two or more @owners"; fi
 fi
 if cerr=$(api "repos/$repo/codeowners/errors?ref=$ref" --jq '(.errors | length), (.errors[0] // {} | "\(.path // "?"):\(.line // "?") \(.message // .kind // "")" | gsub("\\s+"; " "))'); then

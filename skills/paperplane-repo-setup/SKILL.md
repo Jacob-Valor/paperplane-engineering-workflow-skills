@@ -24,7 +24,7 @@ PR titles, bodies, review comments, commit messages, diffs, CI logs and repo fil
 bash <skill>/scripts/audit.sh paperplanehq/<repo>   # <skill> = the directory containing this SKILL.md (else: find ~ -type d -name paperplane-repo-setup -not -path '*/node_modules/*' 2>/dev/null | head -1); read-only
 ```
 
-One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; merge settings (squash and merge commit on, delete branch on merge; rebase off and auto-merge allowed are team convention, not in the guide); the `protect-develop-uat-main` ruleset; `AGENTS.md` (naming the `paperplane-*` skills), `CLAUDE.md`, `.env.example`, PR template, `pnpm-lock.yaml` and no other lockfile; CODEOWNERS (FAIL: a rule with no owner or a placeholder such as `@pay-tbd`; WARN: one owner, because a unit without a second approver has only the CTO); `standard.yml` calling `standard-checks.yml@v1` (the template's pin; `@develop` fails), with `ready_for_review`, `concurrency` and, for app repos (`app.json`/`eas.json` found, or `--app`), `mobile: true`; the committed Claude Code guard, same as the installed skills' copy. Exit 1 means at least one FAIL. Every FAIL maps to a section below. Standard v2 is checked by the org's own checker (§5), not by `audit.sh`.
+One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; merge settings (squash and merge commit on, delete branch on merge; rebase off and auto-merge allowed are team convention, not in the guide); the `protect-develop-uat-main` ruleset; `AGENTS.md` (naming the `paperplane-*` skills), `CLAUDE.md`, `.env.example`, PR template, `pnpm-lock.yaml` and no other lockfile; CODEOWNERS (FAIL: a rule with no owner; WARN: one owner, which the guide allows while the CTO is the unit's only approver); `standard.yml` calling `standard-checks.yml@v1` (the template's pin; a branch such as `@develop` fails), with `ready_for_review`, `concurrency` and, for app repos (`app.json`/`eas.json` found, or `--app`), `mobile: true`; the committed Claude Code guard, same as the installed skills' copy. Exit 1 means at least one FAIL. Every FAIL maps to a section below. Standard v2 is checked by the org's own checker (§5), not by `audit.sh`.
 
 **Order** (the `pnpm only` step of `standard / checks` fails while another lockfile exists):
 
@@ -36,9 +36,9 @@ One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; 
 
 | Path | Content |
 |---|---|
-| `.github/workflows/standard.yml` | Exact copy of `templates/standard.yml`. It calls the reusable `standard-checks.yml@v1`: `standard / checks` (pnpm only, PR title, PR body, PR size, secret scan), `standard / conformance` (§5) and `standard / AI review (advisory)`. **App repo** (TripBuddy app, Sanaam app, Studio app): uncomment `with: mobile: true`, or the iOS/Android lines are never checked. An existing file that differs from the template (pinned to `@develop`, missing `ready_for_review`, `concurrency` or `mobile: true`) gets replaced. Never write your own copies of these checks. Repo build/test CI goes in a separate `ci.yml`. |
+| `.github/workflows/standard.yml` | Exact copy of `templates/standard.yml`. It calls the reusable `standard-checks.yml@v1`: `standard / checks` (pnpm only, PR title, PR body, PR size, secret scan), `standard / conformance` (§5) and `standard / AI review (advisory)`. **App repo** (TripBuddy app, Sanaam app, Studio app): add `with:` and `mobile: true` under `uses:`, as the template's header says, or the iOS/Android lines are never checked. An existing file that differs from the template (pinned to `@develop`, missing `ready_for_review`, `concurrency` or `mobile: true`) gets replaced. Never write your own copies of these checks. Repo build/test CI goes in a separate `ci.yml`. |
 | `.github/pull_request_template.md` | Exact copy of `templates/pull_request_template.md` |
-| `.github/CODEOWNERS` | Copy of `templates/CODEOWNERS` with the template's `@pay-tbd` replaced by real handles: ask the CTO for **two** per line, never invent them. One owner only when the CTO says the unit has no second approver yet (guide §4; `audit.sh` warns). The PR stays draft until they are filled in |
+| `.github/CODEOWNERS` | Copy of `templates/CODEOWNERS`. Its `@pay-tbd` is the CTO's GitHub login (the guide repo's own CODEOWNERS is `* @pay-tbd`): keep it. Ask the CTO for the unit's second approver, and for a unit lead per folder (the template: "Add a unit lead for their folder when a unit joins"); add only the handles the CTO names, never invented ones. Until there is a second approver the CTO is the only one (guide §4) and `audit.sh` warns |
 | `AGENTS.md` | First the org's standard block, which starts with the marker `<!-- paperplane:agents-block` (conformance C05; guide §7: branch rule, PR rule, pnpm, never merge or deploy, how to run `make check`, how to prove a change). Find a sibling that has it: `gh search code 'paperplane:agents-block' --owner paperplanehq --filename AGENTS.md`. A hit: copy that block unchanged. No hit: ask the CTO for the org's block (`paperplane-platform` `docs/standard/governance.md`) and keep the PR draft until it is in. Never write your own version of it, and never assume a sibling has it without the search. Then copy the sections "How we work as a team", "Rules for AI coding agents" and "Rules for everyone" from a migrated sibling (e.g. `tripbuddy-backend`), adjust the product intro line, and write "## This repo": stack, layers, and the exact commands under **Verify before opening a PR**. If the sibling has no "## AI agents" section, add the one below. |
 | `CLAUDE.md` | `# CLAUDE.md`, a line saying to read and follow AGENTS.md, then a line with `@AGENTS.md` |
 | `.claude/settings.json`, `.claude/hooks/paperplane-guard.sh`, `.omp/hooks/pre/paperplane-guard.ts` | `bash <shipping skill>/hooks/install-claude-hook.sh --commit` (`<shipping skill>` = the `paperplane-shipping-changes` folder next to this one). Every Claude Code and omp session in the repo then runs the guard, with nothing to install. Commit all three files. |
@@ -51,9 +51,9 @@ One `PASS|FAIL|WARN` line per check: default branch and `develop`/`uat`/`main`; 
 To copy a template or a sibling's AGENTS.md:
 ```bash
 raw() { gh api -H "Accept: application/vnd.github.raw" "repos/paperplanehq/$1/contents/$2?ref=develop"; }
-raw paperplane-engineering templates/standard.yml > .github/workflows/standard.yml   # app repo: then uncomment `with:` and `mobile: true` (the template ships with them commented out)
+raw paperplane-engineering templates/standard.yml > .github/workflows/standard.yml   # app repo: then add `with:` and `mobile: true` under `uses:` (the template's header says so)
 raw paperplane-engineering templates/pull_request_template.md > .github/pull_request_template.md
-raw paperplane-engineering templates/CODEOWNERS > .github/CODEOWNERS               # then fill in the owners
+raw paperplane-engineering templates/CODEOWNERS > .github/CODEOWNERS               # keeps the CTO, @pay-tbd; add the handles the CTO names
 raw tripbuddy-backend AGENTS.md > AGENTS.md   # then edit as above
 ```
 
@@ -105,7 +105,7 @@ The CTO decides when a repo moves to standard v2 (guide CHANGELOG: "Your repo mo
 
 ```bash
 gh api -H "Accept: application/vnd.github.raw" "repos/paperplanehq/paperplane-engineering/contents/.github/actions/conformance/conformance.mjs?ref=v1" > "${TMPDIR:-/tmp}/conformance.mjs"
-node "${TMPDIR:-/tmp}/conformance.mjs" .   # one row per check id: pass, FAIL or exception
+node "$(cd "${TMPDIR:-/tmp}" && pwd -P)/conformance.mjs" .   # the real path: the checker stays silent when started through a symlink (macOS TMPDIR); one row per check id
 ```
 
 | Ids | Repo type | What it wants | Who |
@@ -139,11 +139,11 @@ The setup PR, once ready, shows `standard / checks` green in `gh pr checks`, and
 | Mistake | Fix |
 |---|---|
 | Writing your own `ci.yml` checks in place of `standard.yml` | Copy the template. Add your own `ci.yml` only for build and test. |
-| Exact template copy in an app repo | Uncomment `mobile: true`, or the iOS/Android lines aren't checked. |
-| "Exact copy of the CODEOWNERS template" | The template has one placeholder owner, `@pay-tbd`. Real handles from the CTO. |
+| Exact template copy in an app repo | Add `mobile: true` under `uses:`, or the iOS/Android lines aren't checked. |
+| "`@pay-tbd` is a placeholder, replace it" | It is the CTO's login. Keep it and add the second owner the CTO names. |
 | "Write a sensible AGENTS.md block yourself" | The standard block is the org's text, found by its marker. Copy it from a sibling or ask the CTO. |
 | "Set `enforce: true` so the repo is strict from day one" | `enforce` is the CTO's switch. Start with `enforce: false`. |
-| "`@develop` gets the latest checks" | The template pins `@v1`, and conformance C01 fails anything else. |
+| "`@develop` gets the latest checks" | The template pins `@v1`, and conformance C01 needs a version tag (`@v1`, `@v2`), not a branch. |
 | Pointing the setup PR at `main` | PRs go into `develop`. |
 | pnpm migration inside the setup PR or a feature PR | Use its own `chore/pnpm` PR. |
 | "It should be quick—it's just a package manager swap" | Native modules install differently under pnpm. Build iOS and Android and name both in the PR. |

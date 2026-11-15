@@ -120,6 +120,17 @@ commit README.md 2026-10-13T23:00:00Z "docs: same day"
 expect "same-day guide commit is not drift" 0 bash "$C"
 
 setup
+commit reviewing.md 2026-10-20T10:00:00Z "docs(reviewing): new rule"
+expect "newer reviewing.md commit is drift" 1 bash "$C"
+says "drift names reviewing.md" '^DRIFT +guide-version +.*2026-10-20: docs\(reviewing\): new rule \(reviewing\.md\)'
+
+setup
+commit reviewing.md 2026-10-01T10:00:00Z "docs(reviewing): old rule"
+commit .github/actions/conformance/conformance.mjs 2026-10-02T10:00:00Z "feat(conformance): old check"
+expect "older reviewing.md and conformance.mjs commits are not drift" 0 bash "$C"
+says "guide-version OK against the newest watched commit" '^OK +guide-version +.* 2026-10-13 >= newest guide commit 2026-10-13'
+
+setup
 printf 'on:\n  pull_request:\n    types: [opened, ready_for_review]\njobs:\n  standard:\n    uses: paperplanehq/paperplane-engineering/.github/workflows/standard-checks.yml@v1\n' > "$FAKE_GH/files/templates/standard.yml"
 grep -v ready_for_review "$SKILLS_DIR/paperplane-repo-setup/SKILL.md" > t && mv t "$SKILLS_DIR/paperplane-repo-setup/SKILL.md"
 expect "ready_for_review unexplained by repo-setup is drift" 1 bash "$C"

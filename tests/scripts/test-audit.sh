@@ -108,19 +108,19 @@ expect "audit: --app forces the mobile check" 1 bash "$A" "$R" --app
 compliant
 serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '* @paperplanehq/leads @alice\n/api/ @bob\n')"
 expect "audit: one-owner CODEOWNERS rule is a WARN only" 0 bash "$A" "$R"
-says "audit: names the one-owner rule" '^WARN  codeowners .*one @owner for: /api/; add a second code owner'
+says "audit: names the one-owner rule" '^WARN  codeowners .*one @owner for: /api/; the guide allows the CTO .*add a second code owner'
 serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '# template\n*   @pay-tbd\n')"
-expect "audit: template placeholder owner fails" 1 bash "$A" "$R"
-says "audit: names the placeholder owner" '^FAIL  codeowners .*placeholder owner for: \* \(@pay-tbd\)'
-serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '* @alice @paperplanehq/Mobile-TBD\r\n')"
-expect "audit: placeholder next to a real owner fails (any case, CRLF)" 1 bash "$A" "$R"
-says "audit: names the placeholder among owners" '^FAIL  codeowners .*@paperplanehq/Mobile-TBD'
+expect "audit: the template's CTO-only CODEOWNERS is a WARN only" 0 bash "$A" "$R"
+says "audit: CTO-only CODEOWNERS warns" '^WARN  codeowners .*one @owner for: \*;'
+serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '* @alice @bob\r\n')"
+expect "audit: two owners pass (CRLF)" 0 bash "$A" "$R"
+says "audit: two owners pass" '^PASS  codeowners '
 serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '* @alice @bob\n/docs/\n/ios/ @carol\n')"
 expect "audit: rule without an owner fails" 1 bash "$A" "$R"
 says "audit: names the ownerless rule" '^FAIL  codeowners .*no @owner for: /docs/;'
-serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '* @alice @bob\n/tbd/ @tbd-team @carol\n')"
-expect "audit: '-tbd' only counts at the end of a handle" 0 bash "$A" "$R"
-says "audit: two real owners pass" '^PASS  codeowners '
+serve "repos/$R/contents/.github/CODEOWNERS?ref=develop" "$(printf '# only comments\n\n')"
+expect "audit: CODEOWNERS without rules fails" 1 bash "$A" "$R"
+says "audit: names the empty CODEOWNERS" '^FAIL  codeowners .*no rules in \.github/CODEOWNERS'
 
 compliant
 serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}" yarn.lock)"
