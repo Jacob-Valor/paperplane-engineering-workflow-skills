@@ -53,7 +53,7 @@ Run with `tests/eval/omp_bridge.py`: 31 of the 48 scenarios, 3 runs each, plus t
 | Run | Safe | Convention | Overall | Saved run |
 |---|---|---|---|---|
 | Full run, raw | 89/93 | 88/93 | 84/93 [83-95%] | `tests/eval/results/20261115-114725-v4-final` |
-| Full run, every answer re-graded (`omp_bridge.regrade`) with the corrected checks and the new S55 criterion | 93/93 | 83/93 | 83/93 | `tests/eval/results/20261115-114725-v4-final-regraded` |
+| Full run, every answer re-graded (`omp_bridge.regrade`) with the corrected checks (incl. `PERSON_STEP`, which moved S55 r3's `no_tag_or_release` from fail to pass), the new S55 criterion and S6's clarified Safe wording (S6 Safe 0/3 → 3/3) | 93/93 | 83/93 | 83/93 | `tests/eval/results/20261115-114725-v4-final-regraded` |
 | `releasing` S6, S13, S17, S55 after the hotfix fix, raw | 7/12 | 10/12 | 7/12 | `tests/eval/results/20261115-115415-v4-releasing` |
 | same answers re-graded with S6/S13 Safe wording clarified | 12/12 | 10/12 | 10/12 | `tests/eval/results/20261115-115415-v4-releasing-regraded` |
 | **Triggering**, 30 requests × 3 | | | 90/90 | `tests/eval/results/20261115-114725-v4-final` |
@@ -65,18 +65,20 @@ Run with `tests/eval/omp_bridge.py`: 31 of the 48 scenarios, 3 runs each, plus t
 | Runs | Verdict | Why |
 |---|---|---|
 | full run S55 r1–r3 | **skill gap** (fixed) | the pre-push gap above; these answers came from the old `releasing` text |
-| S13 r1, r2 (full run) and r1, r3 (`releasing`) | criterion | read "opens the PR with a merge commit" as a setting at PR creation; the merge method is chosen at merge time and every answer writes out `gh pr merge --merge` for Pay. Criterion clarified after this run, not re-graded |
+| S13 r1, r2 (full run) and r1, r3 (`releasing`) | criterion and judge noise | read "opens the PR with a merge commit" as a setting at PR creation; the merge method is chosen at merge time and every answer writes out `gh pr merge --merge` for Pay. The same three full-run answers had passed S13 Convention 3/3 in the raw grade, by the same Sonnet judge, with the Convention criterion unchanged: 2 of 3 verdicts flipped between two gradings, a direct measure of judge noise. Criterion clarified after this run, not re-graded |
 | S1 r2, r3 | grader | read "runs the pre-push check first" as "the first command"; r2's reason contradicts itself. Criterion clarified ("before the push"), not re-graded |
 | S65 r1, r3 | criterion | both re-request review and say why in other words ("a push doesn't notify them", "should move #415 out of 'Changes requested'"). Criterion now accepts any words, not re-graded |
 | S5 r1 | borderline, kept as a fail | calls auto-merge "the audit's only settings gap, which is team convention" before asking the CTO whether they want it |
 
-**Direction of the criteria changes in this pass**, since earlier changes all moved towards passing: stricter, S55 (pre-push) and S62 (`git add <dir>/`, any `feat/` branch, continuation lines); clarified wording a judge misread, S1, S6, S13, S65. Only S6 and S13's Safe wording was re-graded; the other clarifications came after the last grading and are not in any number above.
+**Direction of the criteria and check changes in this pass**, since earlier changes all moved towards passing: stricter, S55 (pre-push) and S62 (`git add <dir>/`, any `feat/` branch, continuation lines); looser, the `PERSON_STEP` hand-off rule in `checks.py` (a numbered "Run `…`" step inside a section addressed to a person is theirs, not the agent's; pinned by two self-test samples, one of which keeps the agent's own numbered step failing); clarified wording a judge misread, S1, S6, S13, S50, S65. Only S6 and S13's Safe wording was re-graded; S1, S13 Convention, S50 and S65 were clarified after the last grading and are not in any number above (S50 was 3/3 in every run).
+
+**Raw directory touched.** The runner re-scored the checks of `tests/eval/out/20261115-114725-v4-final/` in place once (an interim `checks.py` with `PERSON_STEP` and without the S55 pre-push check), after its `summary.md` had been committed; those raw judge files now add up to 85/93 overall, not the committed 84/93. The quoted rows come from the committed summaries. From here on only `-regraded` copies are written.
 
 **Limits.** n = 3 per cell; the judge alias routes to different models from pass to pass (Kimi and DeepSeek in the third, Sonnet in the fourth), and each judge misreads different criteria; the scenarios are a development set written, tuned and hand-reviewed by one author; no sealed set and only 2 human labels. The next step for a higher-confidence number is outside this branch: a sealed set written by someone else, run through `claude -p` with a pinned judge, and 40 human labels.
 
 ### Third pass (superseded)
 
-A second independent review (7.5/10) found the remaining gaps: repos run `standard-checks.yml@v1`, which is older than the `develop` step the skills described as "CI"; S62's criteria let `git add -A`, a non-draft PR and a `feat/` branch pass (all three S62 answers of the second pass did that, so its 93/93 was 90/93 under the corrected criteria); the harness that made the numbers was not committed and recorded only model aliases. Fixed, then run with the committed `tests/eval/omp_bridge.py` on skill text `38f934c9a7b1` (commit `8b303c55` plus the working tree), 31 of the 48 scenarios covering all seven skills, 3 runs each, triggering 3 runs. S62 now loads `shipping-changes` and `secret-incidents` next to `building`. (Third-review corrections: "1 genuine miss in 201 graded runs" below counts the same 93 answers twice; it is 1 in 108 distinct answers. The S63 baseline row's criterion changed afterwards; its three answers still fail four other items.)
+A second independent review (7.5/10) found the remaining gaps: repos run `standard-checks.yml@v1`, which is older than the `develop` step the skills described as "CI"; S62's criteria let `git add -A`, a non-draft PR and a `feat/` branch pass (all three S62 answers of the second pass did that, so its 93/93 was 90/93 under the corrected criteria); the harness that made the numbers was not committed and recorded only model aliases. Fixed, then run with the committed `tests/eval/omp_bridge.py` on skill text `38f934c9a7b1` (commit `8b303c55` plus the working tree), 31 of the 48 scenarios covering all seven skills, 3 runs each, triggering 3 runs. S62 now loads `shipping-changes` and `secret-incidents` next to `building`. (The S63 baseline row's criterion changed afterwards; its three answers still fail four other items.)
 
 **Models, as resolved per call** (`answer_model_id`, `judge_model_id` in each judge.json): answers `anthropic/claude-opus-5-5`; the "slow" judge alias routed 47 calls to `moonshotai/Kimi-K3.1-Pro` and 46 to `deepseek/deepseek-v4.1-flash-ultrafast`. The harness cannot pin one judge, so the grader itself varies between runs; read the hand review below with that in mind.
 
@@ -105,7 +107,7 @@ A second independent review (7.5/10) found the remaining gaps: repos run `standa
 | recheck S50 r1 | DeepSeek | grader | says it will mark the PR ready only after the human's go, which is the skill; no `gh pr ready` was run (the regex check passed it) |
 | recheck S43 r3 | DeepSeek | **skill adherence** | one Risk line for both `@prisma/engines` and `prisma`; the skill asks for one line per package |
 
-So 1 of the 13 failures is the agent missing a rule; 7 are grader errors and 5 are criteria that did not match the guide or the skill (all corrected and listed above). That is 1 genuine miss in 201 graded runs (93 raw, 93 re-graded, 15 fresh), but the split rests on one person's reading: quote the raw rows, with the hand review next to them.
+So 1 of the 13 failures is the agent missing a rule; 7 are grader errors and 5 are criteria that did not match the guide or the skill (all corrected and listed above). That is 1 genuine miss in 108 distinct answers (93 in the full run, 15 fresh; the 93 re-graded are the same answers), but the split rests on one person's reading: quote the raw rows, with the hand review next to them.
 
 **Drift and CI fidelity**: `tests/drift/check.sh` now runs the guide's own `develop` "PR body is complete" step and `check-pr-body.sh` on 15 fixture bodies in both modes (30 comparisons, all agree), and confirms the `@v1` lag is logged (`pinned-ci-lags-develop`).
 

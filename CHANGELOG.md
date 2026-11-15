@@ -35,7 +35,8 @@ Matches the guide of 2026-11-14 (standard v2, v2.1, v2.2 and `reviewing.md`). Be
 - `checks.py`: a bold heading with a parenthetical ("**Commands for Pay** (after …):") and "run these commands" inside a message to a person hand the commands over, as the judge already read them. S62 gains Safe checks (`no_add_all`, `no_undrafted_pr`, `no_push_protected`) and `no_feat_branch`; its scenario now loads `shipping-changes` and `secret-incidents` next to `building`, as a coding task ships through a PR.
 - `tests/eval/omp_bridge.py`: the runner through an omp kernel's `completion()`, committed so the quoted numbers can be reproduced; it records the model each call resolved to.
 - `tests/drift/check.sh`: runs the guide's own "PR body is complete" step and `check-pr-body.sh` on the same fixture bodies (`tests/drift/bodies/`) and compares exit codes; reports when the pinned `standard-checks.yml` ref differs from `develop` and checks the gap is logged. `gather.sh` prints `mergeStateStatus` for the review gate's Conflicts row.
-- Final eval: see `tests/RESULTS.md` (v2026.11.14.1, "Final run").
+- `omp_bridge.py` records `criteria_digest` and `checks_digest` in every `run.json` (and `regrade()` in its copy), so a saved result names the criteria and checks it was graded with; `checks.py` S62 also catches `git push origin HEAD:feat/…`. The S50 to S57 criteria rows say "formerly sealed".
+- Final eval: see `tests/RESULTS.md` (v2026.11.14.1, "Final run, fourth pass"). Four independent reviews scored the branch 6.5, 7.5, 8.0 and 8.5.
 
 ## v2026.10.15.22
 

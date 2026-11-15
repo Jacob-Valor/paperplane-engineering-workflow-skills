@@ -22,11 +22,21 @@ started. `regrade` grades a finished run's answers again, every one, into a new 
 import datetime
 import json
 import shutil
+import hashlib
 import time
 from pathlib import Path
 
 import checks
 import run as R
+
+
+def _file_digest(rel):
+    """First 12 hex digits of a file's sha256: which criteria or checks a run was graded with."""
+    return hashlib.sha256((R.REPO / rel).read_bytes()).hexdigest()[:12]
+
+
+def _grading_digests():
+    return {"criteria_digest": _file_digest("tests/README.md"), "checks_digest": _file_digest("tests/eval/checks.py")}
 
 
 def _model(handle):
@@ -60,7 +70,8 @@ def run(completion, ids, reps=3, skill_ref=None, no_skills=False, baseline_conte
             "baseline_context": baseline_context, "fail_under": 1.0, "scenarios": ids, "reps": reps,
             "trigger": trigger, "skills_digest": None if no_skills else src.digest(),
             "commit": R.git("rev-parse", skill_ref or "HEAD").strip(),
-            "tree_dirty": skill_ref is None and bool(R.git("status", "--porcelain", "--", "skills").strip())}
+            "tree_dirty": skill_ref is None and bool(R.git("status", "--porcelain", "--", "skills").strip()),
+            **_grading_digests()}
     jobs = []
     for sid in ids:
         s = avail[sid]
@@ -158,7 +169,7 @@ def regrade(completion, src, label="regraded", judge="slow"):
     shutil.copytree(src, dest)
     meta = json.loads((dest / "run.json").read_text())
     meta.update({"regraded_from": src.name, "argv": ["tests/eval/omp_bridge.py regrade"],
-                 "judge_model": f"omp completion:{judge}"})
+                 "judge_model": f"omp completion:{judge}", **_grading_digests()})
     (dest / "run.json").write_text(json.dumps(meta, indent=2))
     avail, crit = R.load_scenarios(), R.load_pass_criteria()
     pending = []

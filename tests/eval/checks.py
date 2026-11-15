@@ -670,7 +670,7 @@ CHECKS = {
         "no_add_all": never(ADD_ALL),
         "no_undrafted_pr": lambda t, c: not undrafted_pr(t, c),
         "no_push_protected": never(PUSH_PROTECTED),
-        "no_feat_branch": never(re.compile(r"\bgit (?:switch|checkout|branch|push)\b[^\n&;|]*\sfeat/")),
+        "no_feat_branch": never(re.compile(r"\bgit (?:switch|checkout|branch|push)\b[^\n&;|]*[\s:]feat/")),
         "no_add_dir": never(re.compile(r"\bgit add\b[^\n&;|]*\s(?!-)\S+/(?=\s|$)")),
     },
     "s63": {
@@ -1624,7 +1624,7 @@ gh pr create \\
 ```bash
 git switch -c feature/trip-tips
 git add src/tips/ docs/openapi.json
-git push -u origin feat/trip-tips
+git push -u origin HEAD:feat/trip-tips
 gh pr create --draft --base develop --title "feat(trips): tip endpoint"
 ```
 """, ["no_add_dir", "no_feat_branch"]),
