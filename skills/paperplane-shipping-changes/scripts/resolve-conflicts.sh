@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Helps resolve merge conflicts on your own PR the Paper Plane way: merge (never rebase), in the clone (never the web
-# editor), lockfiles rebuilt by pnpm, every real decision left to a person. It never commits, pushes, merges a PR or
-# marks it Ready: you commit and push with the shipping skill's normal steps once --check passes. Run from the repo root.
+# editor), lockfiles rebuilt by the repo's tool (pnpm or bun), every real decision left to a person. It never commits,
+# pushes, merges a PR or marks it Ready: you commit and push with the shipping skill's normal steps once --check
+# passes. Run from the repo root.
 # Usage: bash scripts/resolve-conflicts.sh [--base <branch>]   start: draft again, merge, rebuild lockfiles, list the rest
 #        bash scripts/resolve-conflicts.sh --check             after you resolved the rest: is it safe to commit?
 #   --base  the branch to merge in (default: the PR's base from gh, else develop)
 # Start takes a Ready PR back to draft, runs `git merge --no-commit origin/<base>`, rebuilds each conflicting
-#   pnpm-lock.yaml with `pnpm install --lockfile-only` in its folder (in --check when a package.json or
-#   pnpm-workspace.yaml conflicts too), and prints every other conflict with the commits that touched it on both sides.
+#   pnpm-lock.yaml with `pnpm install --lockfile-only` and each bun.lock with `bun install --lockfile-only`, in its
+#   folder (in --check when a package.json or pnpm-workspace.yaml conflicts too), and prints every other conflict with
+#   the commits that touched it on both sides.
 # Check works only on the merge the start began on this branch. It rebuilds lockfiles still waiting, then refuses
 #   while a conflicted file has a new conflict marker, is unstaged, or cannot be read. On success it prints the
 #   commands to commit and push, and for an approved PR a message for the reviewer.
@@ -43,7 +45,7 @@ MARK='^(<{7,}|>{7,}|\|{7,})( |$|'$'\r'')'
 # File names unquoted (café.md, not "caf\303\251.md"), one per line: core.quotePath=false.
 unmerged() { git -c core.quotePath=false diff --name-only --diff-filter=U; }
 in_list() { printf '%s\n' "$1" | grep -qxF -- "$2"; }
-locks() { printf '%s\n' "$1" | grep -E '(^|/)pnpm-lock\.yaml$'; }
+locks() { printf '%s\n' "$1" | grep -E '(^|/)(pnpm-lock\.yaml|bun\.lock)$'; }
 manifests_under() { # manifests_under <dir> <list>: package.json / pnpm-workspace.yaml in the list, inside <dir>
   local d=$1; [ "$d" = . ] && d=""
   printf '%s\n' "$2" | grep -E "^${d:+$d/}(.*/)?package\.json$|^${d:+$d/}pnpm-workspace\.yaml$"
@@ -51,12 +53,13 @@ manifests_under() { # manifests_under <dir> <list>: package.json / pnpm-workspac
 rebuildable() { # the lock exists on both sides; otherwise it is a deleted-file conflict for the person
   git cat-file -e "origin/$base:$1" 2>/dev/null && git cat-file -e "HEAD:$1" 2>/dev/null
 }
-rebuild_lock() { # rebuild_lock <lockfile>: the base's copy plus this branch's manifests, by pnpm, never by hand
-  local dir; dir=$(dirname "$1")
-  echo "$1: rebuilding from origin/$base's copy with pnpm"
+rebuild_lock() { # rebuild_lock <lockfile>: the base's copy plus this branch's manifests, by its tool, never by hand
+  local dir tool; dir=$(dirname "$1")
+  case "$1" in *bun.lock) tool=bun ;; *) tool=pnpm ;; esac
+  echo "$1: rebuilding from origin/$base's copy with $tool"
   git restore --source="origin/$base" --staged --worktree -- "$1" || return 1
-  command -v pnpm >/dev/null 2>&1 || { echo "pnpm is not installed; install it, then run --check (it rebuilds the lockfile)"; return 1; }
-  ( cd "$dir" && pnpm install --lockfile-only ) || { echo "pnpm install --lockfile-only failed in $dir (see above); fix it, then run --check"; return 1; }
+  command -v "$tool" >/dev/null 2>&1 || { echo "$tool is not installed; install it, then run --check (it rebuilds the lockfile)"; return 1; }
+  ( cd "$dir" && "$tool" install --lockfile-only ) || { echo "$tool install --lockfile-only failed in $dir (see above); fix it, then run --check"; return 1; }
   git add -- "$1"
 }
 kind() { # kind <file>: what sort of conflict git recorded
@@ -155,7 +158,7 @@ if ! $check; then
   while IFS= read -r f; do
     k=$(kind "$f")
     echo; echo "== $f"
-    case "$f" in *pnpm-lock.yaml) echo "-- a lockfile pnpm cannot rebuild here (deleted on one side): ask the person; never edit it by hand." ;; esac
+    case "$f" in *pnpm-lock.yaml|*bun.lock) echo "-- a lockfile pnpm or bun cannot rebuild here (deleted on one side): ask the person; never edit it by hand." ;; esac
     echo "-- commits that touched it, on both sides:"
     git --literal-pathspecs log --merge --format='   %h %s (%an)' -- "$f"
     if [ "$k" = text ]; then
@@ -221,7 +224,7 @@ echo "Then show the person the resolution: git show --remerge-diff HEAD"
 if [ "$review" = APPROVED ] && [ -n "$files" ]; then
   echo; echo "== Message for the reviewer (the person you work for posts it):"
   echo "After your approval, #$pr conflicted with origin/$base. I merged it in (no rebase) and resolved:"
-  printf '%s\n' "$files" | sed 's/^/- /; s/^- \(.*pnpm-lock\.yaml\)$/- \1: rebuilt with pnpm from both sides'"'"' manifests/'
+  printf '%s\n' "$files" | sed 's/^/- /; s/^- \(.*pnpm-lock\.yaml\)$/- \1: rebuilt with pnpm from both sides'"'"' manifests/; s/^- \(.*bun\.lock\)$/- \1: rebuilt with bun from both sides'"'"' manifests/'
   echo "The resolution is in the merge commit (git show --remerge-diff). Could you look again before it merges?"
 fi
 echo; echo "Stop after the push. Mark the PR Ready again only after the person says go."

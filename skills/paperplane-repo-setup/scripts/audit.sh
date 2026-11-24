@@ -99,13 +99,20 @@ if printf '%s\n' "$dotgithub" | grep -qix 'pull_request_template.md'; then
   report PASS file:.github/pull_request_template.md "present $on"
 else report FAIL file:.github/pull_request_template.md "missing $on"; fi
 
-if has "$root" package.json; then
-  if has "$root" pnpm-lock.yaml; then report PASS file:pnpm-lock.yaml "present $on"
-  else report FAIL file:pnpm-lock.yaml "package.json without pnpm-lock.yaml $on; run pnpm install"; fi
-fi
-other=$(printf '%s\n' "$root" | grep -xE 'package-lock\.json|yarn\.lock|bun\.lockb?' | paste -sd' ' -)
-if [ -z "$other" ]; then report PASS pnpm-only "no npm/yarn/bun lockfile $on"
-else report FAIL pnpm-only "remove $other $on (pnpm only)"; fi
+# pnpm or bun: exactly one of pnpm-lock.yaml / bun.lock next to package.json, never npm, yarn or the old binary bun.lockb
+other=$(printf '%s\n' "$root" | grep -xE 'package-lock\.json|yarn\.lock|bun\.lockb' | paste -sd' ' -)
+if has "$root" pnpm-lock.yaml && has "$root" bun.lock; then
+  report FAIL pnpm-or-bun "both pnpm-lock.yaml and bun.lock $on; pick one and remove the other${other:+ (and $other)}"
+elif [ -n "$other" ]; then
+  case " $other " in
+    *' bun.lockb '*) report FAIL pnpm-or-bun "remove $other $on (pnpm or bun; bun install converts bun.lockb to bun.lock)" ;;
+    *) report FAIL pnpm-or-bun "remove $other $on (pnpm or bun)" ;;
+  esac
+elif has "$root" pnpm-lock.yaml; then report PASS pnpm-or-bun "pnpm-lock.yaml only $on"
+elif has "$root" bun.lock; then report PASS pnpm-or-bun "bun.lock only $on"
+elif has "$root" package.json; then
+  report FAIL pnpm-or-bun "package.json without pnpm-lock.yaml or bun.lock $on; run pnpm install (or bun install in a bun repo)"
+else report PASS pnpm-or-bun "no package.json and no npm/yarn/bun.lockb lockfile $on"; fi
 
 # CODEOWNERS (GitHub reads .github/, the root or docs/): every rule names an @owner. The template's @pay-tbd is
 # the CTO's real login. One owner is a WARN: until a unit has a second approver, the CTO is the only one.

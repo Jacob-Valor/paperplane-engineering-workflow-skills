@@ -276,6 +276,29 @@ mkdir -p "$work/repo/packages/web"
 for c in 'npm install' 'npx prettier --write src'; do expect "guard blocks in a pnpm repo subdirectory: $c" 2 guard "$c" "$work/repo/packages/web"; done
 for c in 'npm i -g pnpm' 'npm install --global pnpm'; do expect "guard allows global install in pnpm repo: $c" 0 guard "$c" "$work/pnpm-repo"; done
 
+# bun repos (bun.lock): npm, npx, yarn and pnpm's install commands are blocked, bun is not
+mkdir -p "$work/bun-repo" "$work/bun-git/packages/web"; : > "$work/bun-repo/bun.lock"
+git init -q "$work/bun-git"; : > "$work/bun-git/bun.lock"
+bun_blocked=('npm install' 'npm i lodash' 'npm ci' 'npm add zod' 'npx prettier --write src' 'yarn' 'yarn add zod' 'yarn install'
+  'pnpm install' 'pnpm i' 'pnpm add zod' 'pnpm remove zod' 'pnpm update' 'pnpm dlx prettier --write src' 'pnpm import' 'pnpm --filter app add zod'
+  'pnpm approve-builds esbuild' 'bun run build && pnpm install' 'corepack pnpm install' 'sudo pnpm add zod' 'env CI=1 pnpm install')
+for c in "${bun_blocked[@]}"; do expect "guard blocks in bun repo: $c" 2 guard "$c" "$work/bun-repo"; done
+bun_allowed=('bun install' 'bun i' 'bun add zod' 'bun remove zod' 'bun run dev' 'bunx prettier --write src' 'bun x tsc' 'bun install --frozen-lockfile'
+  'npm run build' 'npm test' 'npm --version' 'yarn test' 'pnpm --version' 'pnpm test' 'pnpm run build' 'npm i -g pnpm' 'pnpm add -g vercel')
+for c in "${bun_allowed[@]}"; do expect "guard allows in bun repo: $c" 0 guard "$c" "$work/bun-repo"; done
+expect "guard: bun repo block names the bun commands" 2 guard 'pnpm install' "$work/bun-repo"
+check "guard: bun repo reason says bun.lock and bun install" grep -q 'bun.lock.*bun install' /tmp/pp-test-out.$$
+expect "guard: pnpm repo block still names pnpm" 2 guard 'bun install' "$work/pnpm-repo"
+check "guard: pnpm repo reason says pnpm install" grep -q 'pnpm-lock.yaml.*pnpm install' /tmp/pp-test-out.$$
+for c in 'npm install' 'pnpm add zod' 'yarn add zod'; do expect "guard blocks in a bun repo subdirectory: $c" 2 guard "$c" "$work/bun-git/packages/web"; done
+expect "guard allows bun in a bun repo subdirectory" 0 guard 'bun add zod' "$work/bun-git/packages/web"
+expect "guard: cd into bun repo then pnpm install" 2 guard "cd $work/bun-repo && pnpm install" "$work/pnpm-repo"
+expect "guard: cd from bun repo into pnpm repo then bun install" 2 guard "cd $work/pnpm-repo && bun install" "$work/bun-repo"
+expect "guard: bun repo then pnpm repo in one command, each checked in its own dir" 0 guard "(cd $work/bun-repo && bun install); cd $work/pnpm-repo && pnpm install" "$work"
+for c in 'npm install' 'pnpm install' 'bun install' 'yarn add zod' 'npx prettier --write src'; do
+  expect "guard allows in a repo with neither lockfile: $c" 0 guard "$c" "$work/npm-repo"; done
+expect "guard without jq: bun rule" 2 guard_nojq 'pnpm install' "$work/bun-repo"
+
 # ---- hardening: quote-split names, hook-disabling config, refspec forms, wrappers, heredocs, cwd
 dev_wt="$work/wt-dev"; feat_wt="$work/wt-feat"; cfg_wt="$work/wt-cfg"
 for d in "$dev_wt:develop" "$feat_wt:feature/z" "$cfg_wt:feature/c"; do

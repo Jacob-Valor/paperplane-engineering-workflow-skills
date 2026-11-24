@@ -16,7 +16,7 @@ said() { grep -q -- "$1" /tmp/pp-test-out.$$; }
 
 work=$(mktemp -d); trap 'rm -rf "$work" /tmp/pp-test-out.$$' EXIT
 # Fakes: gh answers `pr view` from $work/pr.json ("no pull requests found" without one) and logs every call;
-# pnpm writes a lockfile from package.json in the folder it runs in; gitleaks finds nothing.
+# pnpm and bun write a lockfile from package.json in the folder they run in; gitleaks finds nothing.
 bin="$work/bin"; mkdir -p "$bin"
 cat > "$bin/gh" <<EOF
 #!/bin/sh
@@ -32,6 +32,11 @@ cat > "$bin/pnpm" <<'EOF'
 #!/bin/sh
 [ "$1 $2" = "install --lockfile-only" ] || exit 1
 { echo "lockfileVersion: '9.0'"; echo "# rebuilt from:"; grep '"dep-' package.json || true; } > pnpm-lock.yaml
+EOF
+cat > "$bin/bun" <<'EOF'
+#!/bin/sh
+[ "$1 $2" = "install --lockfile-only" ] || exit 1
+{ echo '{ "lockfileVersion": 1 }'; echo "# rebuilt by bun from:"; grep '"dep-' package.json || true; } > bun.lock
 EOF
 printf '#!/bin/sh\nexit 0\n' > "$bin/gitleaks"
 chmod +x "$bin"/*
@@ -55,12 +60,13 @@ conflict() { # conflict <name> <file>: both sides changed <file>
   plain "$1"; echo a > "$2"; git add -- "$2"; git commit -qm init; git push -q origin develop
   diverge "echo ours > '$2'" "echo theirs > '$2'"
 }
-routes() { # routes <name>: package.json (compatible), lockfile and src/routes.ts conflict
+routes() { # routes <name> [lockfile]: package.json (compatible), lockfile and src/routes.ts conflict
+  local lock=${2:-pnpm-lock.yaml}
   plain "$1"; mkdir src; printf 'export const routes = [\n  "home",\n];\n' > src/routes.ts
-  printf '{\n  "name": "x",\n  "dependencies": {\n  }\n}\n' > package.json; printf "lockfileVersion: '9.0'\n" > pnpm-lock.yaml
+  printf '{\n  "name": "x",\n  "dependencies": {\n  }\n}\n' > package.json; printf "lockfileVersion: '9.0'\n" > "$lock"
   git add .; git commit -qm init; git push -q origin develop
-  diverge "printf '{\n  \"name\": \"x\",\n  \"dependencies\": {\n    \"dep-ours\": \"1\"\n  }\n}\n' > package.json; printf '# ours\n' >> pnpm-lock.yaml; printf 'export const routes = [\n  \"home\",\n  \"alerts\",\n];\n' > src/routes.ts" \
-          "printf '# theirs\n' >> pnpm-lock.yaml; printf 'export const routes = [\n  \"home\",\n  \"admin\",\n];\n' > src/routes.ts"
+  diverge "printf '{\n  \"name\": \"x\",\n  \"dependencies\": {\n    \"dep-ours\": \"1\"\n  }\n}\n' > package.json; printf '# ours\n' >> $lock; printf 'export const routes = [\n  \"home\",\n  \"alerts\",\n];\n' > src/routes.ts" \
+          "printf '# theirs\n' >> $lock; printf 'export const routes = [\n  \"home\",\n  \"admin\",\n];\n' > src/routes.ts"
 }
 resolve_routes() { printf 'export const routes = [\n  "home",\n  "admin",\n  "alerts",\n];\n' > src/routes.ts; }
 commit_and_push() { git commit -q --no-edit && bash "$P" origin/develop >/dev/null && git push -q origin feature/x; }
@@ -116,6 +122,24 @@ expect "pnpm fails at start: blocked" 1 bash "$R"
 mv "$bin/pnpm.real" "$bin/pnpm"; resolve_routes; git add -- src/routes.ts
 expect "check rebuilds the lockfile with pnpm" 0 bash "$R" --check
 check "the staged lockfile was rebuilt" bash -c 'git show :pnpm-lock.yaml | grep -q "rebuilt from"'
+
+routes bunlock bun.lock; pr_json false APPROVED
+expect "bun: start leaves only the code conflict (exit 4)" 4 bash "$R"
+check "bun: bun.lock rebuilt by bun and staged" bash -c 'grep -q "rebuilt by bun" bun.lock && ! git diff --name-only --diff-filter=U | grep -qx bun.lock'
+check "bun: says it rebuilt with bun, never pnpm" bash -c "grep -q 'bun.lock: rebuilding .* with bun' /tmp/pp-test-out.$$ && [ ! -e pnpm-lock.yaml ]"
+check "bun: bun.lock is not listed as a file to edit" bash -c "! grep -q '== bun.lock' /tmp/pp-test-out.$$"
+resolve_routes; git add -- src/routes.ts
+expect "bun: check passes" 0 bash "$R" --check
+check "bun: the reviewer message says bun.lock was rebuilt with bun" said 'bun.lock: rebuilt with bun'
+git merge --abort
+
+routes bunfail bun.lock; pr_json true ""
+mv "$bin/bun" "$bin/bun.real"; printf '#!/bin/sh\nexit 1\n' > "$bin/bun"; chmod +x "$bin/bun"
+expect "bun fails at start: blocked" 1 bash "$R"
+check "bun fails: says bun install --lockfile-only failed" said 'bun install --lockfile-only failed'
+mv "$bin/bun.real" "$bin/bun"; resolve_routes; git add -- src/routes.ts
+expect "check rebuilds bun.lock with bun" 0 bash "$R" --check
+check "the staged bun.lock was rebuilt" bash -c 'git show :bun.lock | grep -q "rebuilt by bun"'
 
 plain bothjson; printf '{\n  "dependencies": {\n  }\n}\n' > package.json; printf 'lock: 0\n' > pnpm-lock.yaml; git add .; git commit -qm init; git push -q origin develop
 diverge "printf '{\n  \"dependencies\": {\n    \"dep-a\": \"1\"\n  }\n}\n' > package.json; echo 'lock: a' > pnpm-lock.yaml" \

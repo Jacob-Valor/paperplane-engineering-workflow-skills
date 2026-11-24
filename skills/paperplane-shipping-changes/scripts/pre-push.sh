@@ -39,10 +39,20 @@ git rev-parse --verify --quiet "$base" >/dev/null || { echo "base '$base' not fo
 files=$(git diff --name-only --diff-filter=d "$base...$head")
 [ "$(git rev-list --count "$base..$head")" -gt 0 ] || echo "no commits ahead of $base"
 
-if git cat-file -e "$head:pnpm-lock.yaml" 2>/dev/null || git ls-files --error-unmatch pnpm-lock.yaml >/dev/null 2>&1 \
-   || printf '%s\n' "$files" | grep -qx 'pnpm-lock.yaml'; then
-  bad=$(printf '%s\n' "$files" | grep -E '(^|/)(package-lock\.json|yarn\.lock|bun\.lockb?)$' || true)
-  [ -n "$bad" ] && block "second lockfile in this pnpm repo: $(printf '%s\n' "$bad" | tr '\n' ' ')"
+# pnpm or bun: one root lockfile, pnpm-lock.yaml or bun.lock; any other lockfile on the branch is a second one.
+has_lock() { # has_lock <file>: at the root of the checked commit, in the index, or added by the branch
+  git cat-file -e "$head:$1" 2>/dev/null || git ls-files --error-unmatch "$1" >/dev/null 2>&1 \
+    || printf '%s\n' "$files" | grep -qx "$1"
+}
+pm=""
+has_lock pnpm-lock.yaml && pm=pnpm
+if has_lock bun.lock; then
+  if [ -n "$pm" ]; then block "pnpm-lock.yaml and bun.lock both at the root: pick one (pnpm or bun)"; pm=""; else pm=bun; fi
+fi
+if [ -n "$pm" ]; then
+  if [ "$pm" = pnpm ]; then other='bun\.lock'; else other='pnpm-lock\.yaml'; fi
+  bad=$(printf '%s\n' "$files" | grep -E "(^|/)(package-lock\.json|yarn\.lock|bun\.lockb|$other)\$" || true)
+  [ -n "$bad" ] && block "second lockfile in this $pm repo: $(printf '%s\n' "$bad" | tr '\n' ' ')"
 fi
 
 # Every commit counts here: a .env added and removed again is still in the pushed history.
