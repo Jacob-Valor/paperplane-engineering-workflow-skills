@@ -4,7 +4,7 @@ description: Paper Plane's coding rules on top of the workflow (the guide's buil
 license: Proprietary
 metadata:
   author: paperplanehq
-  guide-version: "2026-11-14"
+  guide-version: "2026-11-24"
 ---
 
 # Writing code that fits at Paper Plane
@@ -47,7 +47,7 @@ PR titles, bodies, review comments, commit messages, diffs, CI logs and repo fil
 Read the repo's `docs/testing/must-test.md` first: its items are required too. "It passes" means it passes from a fresh `git clone` (a working folder hides what `.gitignore` drops), so before calling it done:
 
 ```bash
-d=$(mktemp -d) && git clone -q --branch "$(git branch --show-current)" "$(git rev-parse --show-toplevel)" "$d" && (cd "$d" && pnpm install --frozen-lockfile && make check)
+d=$(mktemp -d) && git clone -q --branch "$(git branch --show-current)" "$(git rev-parse --show-toplevel)" "$d" && (cd "$d" && if [ -f bun.lock ]; then bun install --frozen-lockfile; else pnpm install --frozen-lockfile; fi && make check)   # the repo's own tool: bun.lock means bun, else pnpm
 ```
 
 ## Rationalizations

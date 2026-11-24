@@ -124,13 +124,14 @@ EOF2
   return $rc
 }
 for s in $skills; do check "draft PRs only: $s" draft_ok "$s"; done
-# pnpm only: no skill tells the reader to run npm/yarn/bun/npx as a step (fenced commands).
-pnpm_ok() {
-  if fence_cmds "$1" | grep -E '^(npm|yarn|bun|npx)( |$)' >/dev/null; then bad "$1: fenced command uses a non-pnpm tool"; return 1; fi
+# pnpm or bun: no skill tells the reader to run npm/yarn/npx as a step (fenced commands).
+pm_ok() {
+  if fence_cmds "$1" | grep -E '^(npm|yarn|npx)( |$)' >/dev/null; then bad "$1: fenced command uses npm, yarn or npx"; return 1; fi
 }
-for s in $skills; do check "pnpm only: $s" pnpm_ok "$s"; done
+for s in $skills; do check "pnpm or bun: $s" pm_ok "$s"; done
 for s in paperplane-shipping-changes paperplane-reviewing-prs paperplane-repo-setup; do
-  check "pnpm rule stated: $s" grep -q 'pnpm' "skills/$s/SKILL.md"; done
+  check "pnpm or bun rule stated: $s" grep -q 'pnpm.*or.*bun' "skills/$s/SKILL.md"; done
+check "no skill says pnpm only (the rule is pnpm or bun)" bash -c "! grep -rn 'pnpm only' skills/*/SKILL.md | grep -v 'standard-checks.yml@v1'"
 
 # ---------------------------------------------------------------- (e) description trigger ownership
 # term-regex#skills allowed to use it in their description (short names without the paperplane- prefix)

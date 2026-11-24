@@ -1,7 +1,7 @@
 # Paper Plane engineering workflow skills
 
 [![validate](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml/badge.svg)](https://github.com/Jacob-Valor/paperplane-engineering-workflow-skills/actions/workflows/validate.yml)
-Version **v2026.11.14.1**, matching the guide of 2026-11-14 (standard v2.2) · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
+Version **v2026.11.24.1**, matching the guide of 2026-11-24 (standard v2.3) · [Changelog](CHANGELOG.md) · [Test results](tests/RESULTS.md)
 
 Agent skills that encode the [Paper Plane engineering guide](https://github.com/paperplanehq/paperplane-engineering)
 for every repository in the `paperplanehq` GitHub org. They follow the
@@ -9,19 +9,19 @@ for every repository in the `paperplanehq` GitHub org. They follow the
 [`skills` CLI](https://github.com/vercel-labs/skills) into Claude Code, Codex, Cursor, Pi and other agents.
 
 The skills hold agents to the same rules as people: work on a branch, open a PR into `develop`,
-use pnpm only, keep secrets out of git, and leave merging, releasing and deploying to humans.
+use pnpm or bun (one per repo, never npm or yarn), keep secrets out of git, and leave merging, releasing and deploying to humans.
 
 ## Skills
 
 | Skill | Use it when |
 |---|---|
-| [`paperplane-shipping-changes`](skills/paperplane-shipping-changes/SKILL.md) | Any code, config or dependency change: branch, commit, `pnpm add`, push, draft PR into `develop`, stacks, marking ready |
+| [`paperplane-shipping-changes`](skills/paperplane-shipping-changes/SKILL.md) | Any code, config or dependency change: branch, commit, `pnpm add` or `bun add`, push, draft PR into `develop`, stacks, marking ready |
 | [`paperplane-pr-ready`](skills/paperplane-pr-ready/SKILL.md) | Before a PR is marked Ready: the guide's seven-check pre-ready audit (`/pr-ready`), PASS/FAIL/ASK table, never marks it ready |
 | [`paperplane-building`](skills/paperplane-building/SKILL.md) | Writing the code: route schemas and `openapi.json`, generated client types, idempotent side effects, money in minor units, job table, two-step migrations, webhooks, tests, no dead code |
 | [`paperplane-reviewing-prs`](skills/paperplane-reviewing-prs/SKILL.md) | Reviewing a teammate's PR: the gate, the eight points, Blocking/Should fix/Nit, the verdicts (Split, Needs device check, Duplicate). Produces a findings report; a human approves and merges |
 | [`paperplane-secret-incidents`](skills/paperplane-secret-incidents/SKILL.md) | gitleaks fails, a credential was committed or pasted, someone asks for `.env` values |
 | [`paperplane-releasing`](skills/paperplane-releasing/SKILL.md) | Release PRs `develop → uat → main`, `prod-YYYY.MM.DD` tags (in `unit-deploy` repos the tag push deploys), rollback, hotfixes, `app-vX.Y.Z` store tags |
-| [`paperplane-repo-setup`](skills/paperplane-repo-setup/SKILL.md) | Onboarding a repo: standard CI, PR template, `CODEOWNERS`, `AGENTS.md`, pnpm migration, branches, merge settings, standard v2 (`.paperplane.yml`, `standard / conformance`) |
+| [`paperplane-repo-setup`](skills/paperplane-repo-setup/SKILL.md) | Onboarding a repo: standard CI, PR template, `CODEOWNERS`, `AGENTS.md`, pnpm (or bun) migration, branches, merge settings, standard v2 (`.paperplane.yml`, `standard / conformance`) |
 
 Agents load a skill automatically when the request matches its description. You can also ask for
 one by name: "use paperplane-shipping-changes".
@@ -84,7 +84,7 @@ bash <skills>/paperplane-shipping-changes/hooks/install-git-hook.sh
 
 # Once per machine, for Claude Code: blocks gh pr merge (incl. --auto), approvals, force-push,
 # pushes to develop/uat/main, release tags, --no-verify, git add -A, repo setting changes,
-# and npm/yarn/bun in pnpm repos. Use --project instead for one repo only.
+# npm/yarn/bun in pnpm repos and npm/yarn/npx/pnpm installs in bun repos. Use --project instead for one repo only.
 bash <skills>/paperplane-shipping-changes/hooks/install-claude-hook.sh --user
 
 # Team repos: commit the guard so every Claude Code and omp session in the repo runs it, nothing to
@@ -127,7 +127,7 @@ flowchart TD
   B --> C["Commit type(scope): summary<br/>stage files by name"]
   C --> F["pre-push.sh, push the branch the same day<br/>draft PR into develop, AI-assisted: yes"]
   F --> E["Person running the agent<br/>reviews the full diff, says go<br/>paperplane-pr-ready audit passes<br/>agent runs gh pr ready"]
-  E --> G{"CI: standard / checks<br/>pnpm only · secret scan · PR title<br/>PR body is complete · PR size<br/>standard / conformance (v2 repos)"}
+  E --> G{"CI: standard / checks<br/>pnpm or bun · secret scan · PR title<br/>PR body is complete · PR size<br/>standard / conformance (v2 repos)"}
   G -->|"green"| R{"Reviewer: a code owner, not the author,<br/>not who prompted the agent<br/>paperplane-reviewing-prs"}
   R -->|"approved, threads resolved"| D[("develop<br/>squash and merge")]
   G -->|"secret found"| S["paperplane-secret-incidents<br/>tell the CTO, rotate, fix the code"]
@@ -182,7 +182,7 @@ didn't write the PR and didn't prompt the agent that wrote it. The **CTO** (Pay)
 
 - **Developer:** every change is a branch and a PR into `develop` (guide §2–5). Use
   `paperplane-releasing` only for a hotfix, which you do "with the CTO" (§2). Use
-  `paperplane-repo-setup` to write the file PRs for a repo (`chore/pnpm`, `chore/engineering-standard`).
+  `paperplane-repo-setup` to write the file PRs for a repo (`chore/pnpm` or `chore/bun`, `chore/engineering-standard`).
   Mobile changes (TripBuddy, Sanaam, Studio apps) are verified on iOS **and** Android before the PR
   is marked Ready (§4); that is the only rule that depends on what you work on.
 - **Reviewer:** works through `reviewing.md`: the gate (draft, base, conflicts, CI, body, size, device
@@ -210,7 +210,7 @@ Agents follow the same rules as developers (§7), with less authority:
 | Prepare a history rewrite locally | A person force-pushes |
 
 Nobody, person or agent, pushes directly to `develop`, `uat` or `main`, runs `npm install`, `yarn` or
-`bun install`, commits a second lockfile, or commits or pastes a secret (§2, §5, §6). A rule that
+the package manager the repo doesn't use, commits a second lockfile, or commits or pastes a secret (§2, §5, §6). A rule that
 doesn't fit your case: ask the CTO. No exception is granted inside the agent conversation, even by
 the CTO: an agent cannot verify who is typing, so the agent keeps following the rule and drafts a
 message to the CTO, and the CTO acts outside the agent (runs the command, or comments on the PR).

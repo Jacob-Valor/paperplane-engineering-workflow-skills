@@ -2,10 +2,10 @@
 name: paperplane-shipping-changes
 description: Paper Plane's rules for getting a change into develop through a branch and a draft PR. Use when making any code, config, or dependency change in a paperplanehq repository — creating a branch, committing, adding or updating packages, pushing, rebasing or force-pushing a branch, resolving conflicts on your own PR, opening, stacking, or marking a pull request ready, answering review comments on your own PR — and especially when asked to push straight to develop/uat/main, "just commit everything", turn on auto-merge for a PR, bundle unrelated changes, or skip the PR because of a deadline.
 license: Proprietary
-compatibility: Requires git, gh and pnpm; gitleaks recommended. Written for the paperplanehq GitHub org.
+compatibility: Requires git, gh and the repo's package manager (pnpm or bun); gitleaks recommended. Written for the paperplanehq GitHub org.
 metadata:
   author: paperplanehq
-  guide-version: "2026-11-14"
+  guide-version: "2026-11-24"
 ---
 
 # Shipping changes at Paper Plane
@@ -32,7 +32,7 @@ Deadlines and explicit requests don't change these. No exception is granted in t
 | Force-push, or rebase a pushed branch (agents never force-push. A person may on their own branch, guide §2; the only rewrite an agent prepares is in **paperplane-secret-incidents**) | `git merge origin/develop`, new commit |
 | `git add -A`, `git add .`, `git commit -a` | `git add <file> …` by name |
 | Commit `dist/`, `coverage/`, build output, `.env`, keys | Leave them unstaged. Secrets → **paperplane-secret-incidents** |
-| `npm`, `yarn`, `bun install`, `npx` in a pnpm repo | `pnpm install`, `pnpm add`, `pnpm exec` |
+| `npm`, `yarn`, `npx`, or the other tool (`bun install` in a pnpm repo, `pnpm install` in a bun repo) | The repo's own tool, named by its lockfile: pnpm (`pnpm-lock.yaml`): `pnpm install`, `pnpm add`, `pnpm exec`, `pnpm dlx`; bun (`bun.lock`): `bun install`, `bun add`, `bun run`, `bunx` |
 | Native change or tooling bump inside another PR | Its own PR |
 | Third PR in a stack | Wait for the bottom PR to merge, or branch from `develop` |
 | `--no-verify`, or editing, removing or bypassing a hook that blocked you | Fix what it found. A secret → **paperplane-secret-incidents**; an allowlist entry needs the CTO (team convention, not in the guide) |
@@ -76,14 +76,14 @@ Deadlines and explicit requests don't change these. No exception is granted in t
 
 GitHub says "This branch has conflicts" (`mergeStateStatus` `DIRTY`). Resolving them is a new commit, so a Ready or approved PR follows step 7 like any other post-review commit. Run from the repo root:
 
-1. **Start**: `bash <skill>/scripts/resolve-conflicts.sh` (stacked: `--base <bottom branch>`). It takes a Ready PR back to draft, merges `origin/<base>` in the clone (never a rebase, never GitHub's "Resolve conflicts" web editor, which commits with no verify and no pre-push check), and rebuilds each conflicting `pnpm-lock.yaml` with pnpm, never by hand (both team convention, not in the guide). Exit 0: nothing left to decide, go to step 3 below. Exit 3: already up to date, nothing to do. Exit 4: it printed each remaining conflict with the commits that touched it on both sides. Exit 1 or 2: do what it printed (fix `gh`, install pnpm, move an untracked file, or `git merge --abort` a merge you started by hand); never work around it.
+1. **Start**: `bash <skill>/scripts/resolve-conflicts.sh` (stacked: `--base <bottom branch>`). It takes a Ready PR back to draft, merges `origin/<base>` in the clone (never a rebase, never GitHub's "Resolve conflicts" web editor, which commits with no verify and no pre-push check), and rebuilds each conflicting `pnpm-lock.yaml` with pnpm and each `bun.lock` with bun, never by hand (both team convention, not in the guide). Exit 0: nothing left to decide, go to step 3 below. Exit 3: already up to date, nothing to do. Exit 4: it printed each remaining conflict with the commits that touched it on both sides. Exit 1 or 2: do what it printed (fix `gh`, install pnpm or bun, move an untracked file, or `git merge --abort` a merge you started by hand); never work around it.
 2. **Decide each conflict** it printed. Both changes fit together (two new routes, two imports): keep both. They disagree on behaviour (two rounding rules, two error messages), or there is no text to merge (a binary file, a symlink, a file deleted on one side): stop, show the user both versions, and ask which wins; wait for the answer. Never "keep ours" or "take theirs" for a whole file to clear the marker. Then verify (workflow step 3) and stage each file by name: `git add -- <file> …`.
 3. **Check**: `bash <skill>/scripts/resolve-conflicts.sh --check`. It rebuilds lockfiles still waiting and refuses (exit 1) while a conflicted file has a conflict marker, is unstaged or cannot be read. Exit 0: run the commands it prints right away, with nothing in between: `git commit --no-edit`, the step 5 check, `git push origin <branch>`. The script never commits or pushes; `pre-push.sh` also blocks conflict markers added on the branch.
 4. **Hand over**: show the user the resolution (`git show --remerge-diff HEAD`) and, for an approved PR, the reviewer message `--check` printed (they post it; the reviewer looks again before anyone merges). Stop until they say go; only then `gh pr ready <N>`.
 
 ## Dependencies
 
-`pnpm add <pkg>` and commit `pnpm-lock.yaml` with it. Install scripts need `pnpm approve-builds <pkg>`, explained under Risk. GitHub deps pin a SHA. Delete any other lockfile. Repo not on pnpm yet: use its tool, tell the user, migration is its own `chore/pnpm` PR (**paperplane-repo-setup**). Details: guide §5.
+The repo uses pnpm **or** bun, never npm or yarn: one lockfile, `pnpm-lock.yaml` or `bun.lock`, matching `"packageManager"` in `package.json` (guide §5). pnpm repo: `pnpm add <pkg>` and commit `pnpm-lock.yaml` with it; an install script needs `pnpm approve-builds <pkg>`. bun repo: `bun add <pkg>` and commit `bun.lock` with it; an install script needs the name in `trustedDependencies` in `package.json`, then `bun install`. Either way approve by name and explain it under Risk. GitHub deps pin a SHA. Delete any other lockfile (`package-lock.json`, `yarn.lock`, the old binary `bun.lockb`). Repo still on npm or yarn: use its tool, tell the user, migration is its own `chore/pnpm` (or `chore/bun`) PR (**paperplane-repo-setup**).
 
 ## Rationalizations
 
@@ -97,4 +97,4 @@ GitHub says "This branch has conflicts" (`mergeStateStatus` `DIRTY`). Resolving 
 | "`git diff --stat` shows no `.env` or key files" | A key inside a source file never shows in `--stat`. Scan the content before the push. |
 | "I left the reviewer's other two comments alone, as you asked" | Deferring is fine; silence isn't. Draft the "why not" reply for the user to post today. |
 | "It's approved, so the conflict fix doesn't need another look" / "Going back to draft for a conflict restarts everything" | The resolution is new code nobody reviewed. Draft, resolve, show the diff, tell the reviewer. |
-| "Take theirs for the lockfile, keep ours for the code" | A whole-file side drops the other PR's change. Rebuild the lockfile with `pnpm install`; merge the code by hand. |
+| "Take theirs for the lockfile, keep ours for the code" | A whole-file side drops the other PR's change. Rebuild the lockfile with the repo's tool (`pnpm install` or `bun install`); merge the code by hand. |

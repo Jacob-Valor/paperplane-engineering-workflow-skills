@@ -5,7 +5,7 @@ license: Proprietary
 compatibility: Requires git and gh authenticated to the paperplanehq GitHub org.
 metadata:
   author: paperplanehq
-  guide-version: "2026-11-14"
+  guide-version: "2026-11-24"
 ---
 
 # Releasing at Paper Plane
@@ -64,7 +64,7 @@ Never use `v…` prefixes, semver, or `gh release create`.
 ## Risk
 <what could break>. Not done: <UAT testing / prod deploy>. Rollback: deploy <the tag live in prod now>
 ## Checklist
-<the template's checklist items (title, no secrets, pnpm only), ticked only where true>
+<the template's checklist items (title, no secrets, pnpm or bun with one lockfile), ticked only where true>
 AI-assisted: yes (<tool>) — <what you ran>
 ```
 

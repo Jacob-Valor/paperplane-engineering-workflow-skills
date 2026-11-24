@@ -16,8 +16,8 @@ reads this file at run time; it is a checklist for the fork.
 | Deploys | `deploy.yml` calls `unit-deploy.yml@v1`: a push to `uat` deploys UAT, a pushed `prod-*` tag deploys production | `releasing` |
 | Release cadence and tags | `develop` to `uat` to `main`; `prod-YYYY.MM.DD` tags; `app-vX.Y.Z` store tags | `releasing`, `next-tag.sh` |
 | Where the guide lives | `paperplanehq/paperplane-engineering` README, read after the repo's `AGENTS.md` | `shipping-changes` |
-| Guide version | `2026-11-14`, standard v2.2 (`metadata.guide-version`) | every `SKILL.md`, `tests/drift/` |
+| Guide version | `2026-11-24`, standard v2.3 (`metadata.guide-version`) | every `SKILL.md`, `tests/drift/` |
 | App repos (need iOS and Android checks) | TripBuddy, Sanaam, Studio | `shipping-changes` |
 
-Rules that are not org facts (agents never merge or force-push, drafts only, pnpm only) are kept
+Rules that are not org facts (agents never merge or force-push, drafts only, pnpm or bun) are kept
 identical across skills by `tests/scripts/test-skills-lint.sh`.
