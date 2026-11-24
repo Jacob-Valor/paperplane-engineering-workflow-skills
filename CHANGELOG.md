@@ -2,6 +2,20 @@
 
 Versions follow the date of the engineering guide they match (`vYYYY.MM.DD`). Test numbers for each change are in [`tests/RESULTS.md`](tests/RESULTS.md).
 
+## v2026.11.24.1
+
+Matches the guide of 2026-11-24 (standard v2.3: package manager **pnpm or bun**). Before: 2026-11-14.
+
+### Changed: pnpm or bun (was pnpm only)
+- The rule everywhere: one lockfile per package root, `pnpm-lock.yaml` **or** the text `bun.lock`, matching `"packageManager"`; never `package-lock.json`, `yarn.lock` or the old binary `bun.lockb`; never both. Use the repo's own tool: `pnpm install`/`add`/`exec`/`dlx`, or `bun install`/`add`/`run`/`bunx`; never npm, npx or yarn, and never the other tool. Install scripts are approved by name: `pnpm approve-builds <pkg>`, or the name in `trustedDependencies` then `bun install`.
+- **`shipping-changes`**: the Hard rules row, Dependencies, conflict steps and the lockfile rationalization name both tools. **`repo-setup`**: §3 is a package manager migration; pnpm stays the default (`chore/pnpm`), a repo whose owner chose bun gets a `chore/bun` block (`bun install` imports `package-lock.json`/`yarn.lock`); J01–J06 accept either pair; the order note names the `pnpm or bun` step. **`reviewing-prs`**: the CI step name, the second-lockfile and dependency points (`trustedDependencies`), and "both are allowed, so both lockfiles are fine" as a rationalization. **`releasing`**: the PR checklist item. **`building`**: the fresh-clone check runs `bun install --frozen-lockfile` when the repo has `bun.lock`, else pnpm.
+- **Guard** (`claude-guard.sh`): a repo whose folder or root has `bun.lock` (and no `pnpm-lock.yaml`) now blocks npm, npx, yarn and pnpm's install, add, remove, update, dlx, import and approve-builds commands, with a message naming the bun commands; `pnpm test`/`run`/`exec` and global installs pass. pnpm repos are unchanged; a repo with neither lockfile is not checked. The lookup is still one cached `git` call per folder. `pnpm` behind a wrapper (`corepack pnpm`, `sudo pnpm`, `env X=1 pnpm`) is now read as pnpm. Repos with a committed guard copy get the new one from `install-claude-hook.sh --commit` (`audit.sh` flags the old copy as out of date).
+- **`pre-push.sh`**: a bun repo blocks `package-lock.json`, `yarn.lock`, `bun.lockb` and `pnpm-lock.yaml` added on the branch; a pnpm repo still blocks `bun.lock`; both at the root is blocked ("pick one"). Replacing `pnpm-lock.yaml` with `bun.lock` passes.
+- **`resolve-conflicts.sh`**: a conflicting `bun.lock` is rebuilt with `bun install --lockfile-only` in its folder, the way `pnpm-lock.yaml` is rebuilt with pnpm; the reviewer message says which tool rebuilt it.
+- **`audit.sh`**: the `file:pnpm-lock.yaml` and `pnpm-only` checks are one check, `pnpm-or-bun`: PASS with exactly one of `pnpm-lock.yaml`/`bun.lock`; FAIL for `package-lock.json`, `yarn.lock`, `bun.lockb` (run `bun install` to convert), both, or a `package.json` with neither.
+- Every skill's `guide-version` is `2026-11-24`. Repos pinned to `standard-checks.yml@v1` keep the old `pnpm only` CI step until the CTO moves `v1`; the skills say so where they name the step.
+- Tests: guard (bun repo blocks and allows, subdirectories, `cd` between a bun and a pnpm repo, neither lockfile, no jq), `pre-push.sh` (both directions), `audit.sh` (bun only, both, `bun.lockb`, no JavaScript), `resolve-conflicts.sh` (a fake `bun` rebuilds a conflicting `bun.lock`; its failure blocks). The skills lint checks "pnpm or bun" (fenced `bun` commands are allowed; npm, yarn and npx are not) and that no skill says "pnpm only" except about `@v1`.
+
 ## v2026.11.14.1
 
 Matches the guide of 2026-11-14 (standard v2, v2.1, v2.2 and `reviewing.md`). Before: 2026-10-15.

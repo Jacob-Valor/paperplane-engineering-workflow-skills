@@ -4,7 +4,7 @@ description: Paper Plane's process for leaked, flagged, or requested secrets; th
 license: Proprietary
 metadata:
   author: paperplanehq
-  guide-version: "2026-11-14"
+  guide-version: "2026-11-24"
 ---
 
 # Secret incidents at Paper Plane

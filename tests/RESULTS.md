@@ -42,6 +42,12 @@ Read this before quoting any number below. Counts as of this change; the histori
 
 **Older scenario results used one pass/fail verdict.** The safe and convention columns exist for runs made after this change; earlier result files read as overall only. Some old criteria ask for more than the skill says (S26's exact `gh run list` command, S27's "not a mobile repo" statement; S40 to S44 were corrected for this, S1 to S27 were not re-traced).
 
+## v2026.11.24.1: pnpm or bun (guide v2.3)
+
+**No model run** for this wording change. The eval scenarios and the shared environment (its PR template still says `pnpm only`, see above) are unchanged; every scenario is a pnpm or npm/yarn repo, so the pnpm path they grade is the same.
+
+**Script tests**: `bash tests/scripts/run.sh`: 2454 passed in 13 files, 0 failed. New cases: `test-hooks.sh` (bun repo blocks npm, npx, yarn and pnpm installs, also through `corepack`, `sudo` and `env`, from a subdirectory and after `cd`; allows bun, scripts and global installs; neither lockfile is unchecked; the reasons name each repo's tool), `test-audit.sh` (`pnpm-or-bun`: bun.lock only, pnpm-lock.yaml only, both, `bun.lockb`, `package-lock.json` in a bun repo, no JavaScript), `test-shipping-scripts.sh` (pre-push in both directions), `test-resolve-conflicts.sh` (a fake `bun` rebuilds a conflicting `bun.lock`; a failing `bun` blocks and `--check` rebuilds it). Each new audit, pre-push and resolve-conflicts case was run against the scripts on `main` first: 11, 3 and 9 failures; the guard cases failed there too.
+
 ## v2026.11.14.1: guide v2.2, `pr-ready` and `building`, reviewing to `reviewing.md`
 
 ### Final run, fourth pass (quote these numbers)

@@ -125,12 +125,12 @@ says "audit: names the empty CODEOWNERS" '^FAIL  codeowners .*no rules in \.gith
 compliant
 serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}" yarn.lock)"
 expect "audit: yarn.lock fails" 1 bash "$A" "$R"
-says "audit: names the extra lockfile" '^FAIL  pnpm-only .*yarn\.lock'
+says "audit: names the extra lockfile" '^FAIL  pnpm-or-bun .*yarn\.lock'
 
 compliant
 serve "repos/$R/contents?ref=develop" "$(names AGENTS.md CLAUDE.md .env.example .github package.json app.json)"
-expect "audit: package.json without pnpm-lock.yaml fails" 1 bash "$A" "$R"
-says "audit: names the missing lockfile" '^FAIL  file:pnpm-lock\.yaml '
+expect "audit: package.json without a lockfile fails" 1 bash "$A" "$R"
+says "audit: names the missing lockfile" '^FAIL  pnpm-or-bun .*package\.json without pnpm-lock\.yaml or bun\.lock'
 
 compliant
 serve "repos/$R" "$(settings false)"
@@ -282,17 +282,38 @@ expect "audit: a setting hidden from the token warns, does not fail" 0 bash "$A"
 says "audit: hidden setting is a WARN" '^WARN  allow_auto_merge +hidden from this token'
 says "audit: hidden setting counts one warn" '^summary: .* 0 fail, 1 warn$'
 
-# bun lockfiles are foreign lockfiles in a pnpm repo, both spellings
-for lock in bun.lock bun.lockb; do
+# bun.lock alone is the other accepted lockfile; bun.lockb (old binary) and both lockfiles fail
+BUNROOT=(AGENTS.md CLAUDE.md .env.example .github package.json bun.lock app.json src)
+compliant
+serve "repos/$R/contents?ref=develop" "$(names "${BUNROOT[@]}")"
+expect "audit: bun.lock only passes" 0 bash "$A" "$R"
+says "audit: pnpm-or-bun passes with bun.lock" '^PASS  pnpm-or-bun .*bun\.lock'
+compliant
+serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}")"
+expect "audit: pnpm-lock.yaml only passes" 0 bash "$A" "$R"
+says "audit: pnpm-or-bun passes with pnpm-lock.yaml" '^PASS  pnpm-or-bun .*pnpm-lock\.yaml'
+compliant
+serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}" bun.lock)"
+expect "audit: pnpm-lock.yaml and bun.lock together fail" 1 bash "$A" "$R"
+says "audit: both lockfiles: pick one" '^FAIL  pnpm-or-bun .*both pnpm-lock\.yaml and bun\.lock.*pick one'
+for extra in bun.lockb package-lock.json; do
   compliant
-  serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}" "$lock")"
-  expect "audit: $lock fails" 1 bash "$A" "$R"
-  says "audit: names $lock as the extra lockfile" "^FAIL  pnpm-only .*${lock//./\\.}( |\$)"
+  serve "repos/$R/contents?ref=develop" "$(names "${BUNROOT[@]}" "$extra")"
+  expect "audit: bun repo with $extra fails" 1 bash "$A" "$R"
+  says "audit: names $extra as the extra lockfile" "^FAIL  pnpm-or-bun .*${extra//./\\.}( |\$)"
 done
+compliant
+serve "repos/$R/contents?ref=develop" "$(names AGENTS.md CLAUDE.md .env.example .github package.json bun.lockb app.json src)"
+expect "audit: bun.lockb alone fails" 1 bash "$A" "$R"
+says "audit: bun.lockb: run bun install to convert" '^FAIL  pnpm-or-bun .*bun\.lockb.*bun install'
 compliant
 serve "repos/$R/contents?ref=develop" "$(names "${ROOT[@]}" bunfig.toml lock.json)"
 expect "audit: look-alike names are not bun lockfiles" 0 bash "$A" "$R"
-says "audit: pnpm-only passes without a foreign lockfile" '^PASS  pnpm-only '
+says "audit: pnpm-or-bun passes without a foreign lockfile" '^PASS  pnpm-or-bun '
+compliant
+serve "repos/$R/contents?ref=develop" "$(names AGENTS.md CLAUDE.md .env.example .github)"
+expect "audit: no package.json and no lockfile passes" 0 bash "$A" "$R" --not-app
+says "audit: pnpm-or-bun passes without JavaScript" '^PASS  pnpm-or-bun '
 
 compliant
 serve "repos/$R/codeowners/errors?ref=develop" '{"errors":[{"line":2,"column":3,"kind":"Unknown owner","message":"Unknown owner on line 2: @ghost","path":".github/CODEOWNERS"}]}'

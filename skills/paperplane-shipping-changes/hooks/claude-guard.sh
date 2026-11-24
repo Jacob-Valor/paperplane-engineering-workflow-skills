@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook: blocks Bash commands an agent must never run in
 # paperplanehq repos (merge, approve, force-push, push to develop/uat/main, release
-# tags, --no-verify, stage-everything, repo settings, npm/yarn/bun/npx in a pnpm repo)
+# tags, --no-verify, stage-everything, repo settings, npm/yarn/bun/npx in a pnpm repo,
+# npm/yarn/npx/pnpm installs in a bun repo)
 # and Edit/Write/MultiEdit/NotebookEdit of the guard's own files. Install it with:
 # bash <skill>/hooks/install-claude-hook.sh
 # Usage: bash claude-guard.sh < hook-input.json
@@ -124,19 +125,22 @@ cwd=$(field cwd) || unreadable_closed
 edir=${cwd:-$PWD} # directory the command runs in; cd/pushd move it
 gdir=$edir        # directory of the git command being checked (git -C)
 
-PNPM_CACHE=$'\n' # "dir=0|1" lines: one git fork per directory, not per command
-pnpm_at() { # pnpm_at <dir>: 0 if dir or its repo root has pnpm-lock.yaml
-  local top hit
-  case "$PNPM_CACHE" in
-    *$'\n'"$1="*) hit=${PNPM_CACHE#*$'\n'"$1="}; hit=${hit%%$'\n'*}; [ "$hit" = 1 ]; return ;;
+LOCK_CACHE=$'\n' # "dir=pnpm|bun|none" lines: one git fork per directory, not per command
+lock_at() { # lock_at <dir>: sets PM to pnpm or bun from the lockfile in dir, else in its repo root; fails with neither
+  local top
+  case "$LOCK_CACHE" in
+    *$'\n'"$1="*) PM=${LOCK_CACHE#*$'\n'"$1="}; PM=${PM%%$'\n'*}; [ "$PM" != none ]; return ;;
   esac
-  if [ -f "$1/pnpm-lock.yaml" ]; then hit=1
+  if [ -f "$1/pnpm-lock.yaml" ]; then PM=pnpm # both lockfiles: pnpm (the audit fails that repo anyway)
+  elif [ -f "$1/bun.lock" ]; then PM=bun
   else
     top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || top=$1
-    if [ -f "$top/pnpm-lock.yaml" ]; then hit=1; else hit=0; fi
+    if [ -f "$top/pnpm-lock.yaml" ]; then PM=pnpm
+    elif [ -f "$top/bun.lock" ]; then PM=bun
+    else PM=none; fi
   fi
-  PNPM_CACHE+="$1=$hit"$'\n'
-  [ "$hit" = 1 ]
+  LOCK_CACHE+="$1=$PM"$'\n'
+  [ "$PM" != none ]
 }
 resolve_dir() { # resolve_dir <arg> [base]: sets RD to the absolute path of an existing dir under base (edir), else fails (no fork)
   local p=$1 old=$PWD
@@ -173,6 +177,7 @@ R_SETTINGS="repo settings belong to the CTO; do not change them with gh repo edi
 R_REFAPI="creating, moving, committing to or deleting develop/uat/main or release refs, tags and releases through the API skips the push checks; a human does that"
 R_CLEANX="git clean -x/-X also deletes ignored files such as .claude/settings.local.json (this guard's own settings); use git clean -fd, or -n to preview"
 R_PNPM="this repo uses pnpm (pnpm-lock.yaml); use pnpm install, pnpm add or pnpm dlx instead"
+R_BUN="this repo uses bun (bun.lock); use bun install, bun add, bun run or bunx instead"
 R_GITCONFIG="core.hooksPath, alias.* (\"!\" shell aliases above all), paperplane.* and GIT_CONFIG_*/GIT_DIR/GIT_EXEC_PATH skip the repo's hooks or hide the real command; run plain git"
 R_PLUMBING="git send-pack skips the pre-push hook; use git push"
 R_REFSPEC="refspecs with wildcards, {braces} or \$'...' can reach develop/uat/main; name the branch"
@@ -956,7 +961,7 @@ is_cmd() { # words a wrapper (sudo, env, xargs, ssh, ...) may be running
   local b=${1##*/}
   case "$1" in ./*) return 0 ;; esac
   b=${b#=}
-  case "$b" in git|git-?*|gh|npm|npx|yarn|bun|bunx|find|bash|sh|zsh|dash|ksh|mksh|ash|fish|csh|tcsh|eval|source|trap) return 0 ;; esac
+  case "$b" in git|git-?*|gh|npm|npx|pnpm|yarn|bun|bunx|find|bash|sh|zsh|dash|ksh|mksh|ash|fish|csh|tcsh|eval|source|trap) return 0 ;; esac
   case "$b" in rm|mv|cp|tee|sponge|truncate|chmod|chown|chgrp|unlink|shred|ln|install|rsync|dd|sed|gsed|perl|ruby|awk|gawk|python|python2|python3|python3.*|node|nodejs) return 0 ;; esac
   return 1
 }
@@ -998,6 +1003,8 @@ pm_exec() { # pm_exec <words after exec/x/dlx, or after npx/bunx>: check the com
   done
 }
 
+# check_npm/yarn/bun/pnpm <args>: block "$R_PM" (the reason naming this repo's tool) when the command installs or
+# changes packages; scripts, tests and info commands pass
 check_npm() {
   local a
   while [ $# -gt 0 ]; do
@@ -1005,9 +1012,9 @@ check_npm() {
     case "$a" in
       --prefix|-w|--workspace|--registry|--userconfig|--cache|--loglevel|--tag|--otp|--scope) [ $# -gt 0 ] && shift ;;
       -*) ;;
-      install|i|in|ins|inst|insta|instal|isntall|ci|add|uninstall|un|unlink|remove|rm|r|update|up|upgrade|udpate|exec|x|it|cit|sit|clean-install|ic|install-clean|isntall-clean|install-test|install-ci-test|clean-install-test|link|ln|dedupe|ddp|prune) block "$R_PNPM"; return ;;
+      install|i|in|ins|inst|insta|instal|isntall|ci|add|uninstall|un|unlink|remove|rm|r|update|up|upgrade|udpate|exec|x|it|cit|sit|clean-install|ic|install-clean|isntall-clean|install-test|install-ci-test|clean-install-test|link|ln|dedupe|ddp|prune) block "$R_PM"; return ;;
       audit) # npm audit fix rewrites package-lock.json and node_modules
-        for a in "$@"; do case "$a" in -*) ;; fix) block "$R_PNPM"; return ;; *) return ;; esac; done
+        for a in "$@"; do case "$a" in -*) ;; fix) block "$R_PM"; return ;; *) return ;; esac; done
         return ;;
       run|run-script|rum|urn|test|t|tst|start|stop|restart|view|v|show|info|ls|list|ll|la|root|bin|config|c|pack|publish|version|help|outdated) return ;;
     esac
@@ -1016,18 +1023,18 @@ check_npm() {
 
 check_yarn() {
   local a
-  [ $# -gt 0 ] || { block "$R_PNPM"; return; } # bare yarn installs
+  [ $# -gt 0 ] || { block "$R_PM"; return; } # bare yarn installs
   while [ $# -gt 0 ]; do
     a=$1; shift
     case "$a" in
       --cwd|--prefix|--registry|--cache-folder|--modules-folder|workspace) [ $# -gt 0 ] && shift ;;
       --version|-v|--help|-h) return ;;
       -*) ;;
-      add|install|remove|dlx|up|upgrade|upgrade-interactive|dedupe|import|link|unlink) block "$R_PNPM"; return ;;
+      add|install|remove|dlx|up|upgrade|upgrade-interactive|dedupe|import|link|unlink) block "$R_PM"; return ;;
       *) return ;; # yarn test, yarn build: a script
     esac
   done
-  block "$R_PNPM" # only options (yarn --frozen-lockfile) installs
+  block "$R_PM" # only options (yarn --frozen-lockfile) installs
 }
 
 check_bun() {
@@ -1037,8 +1044,22 @@ check_bun() {
     case "$a" in
       --cwd|--config|-c) [ $# -gt 0 ] && shift ;;
       -*) ;;
-      install|i|ci|add|a|remove|rm|update|x|link|unlink) block "$R_PNPM"; return ;;
+      install|i|ci|add|a|remove|rm|update|x|link|unlink) block "$R_PM"; return ;;
       *) return ;;
+    esac
+  done
+}
+
+check_pnpm() { # in a bun repo: pnpm's install, package and download commands
+  local a
+  while [ $# -gt 0 ]; do
+    a=$1; shift
+    case "$a" in
+      --filter|-F|--dir|-C|--workspace-dir|--prefix|--registry|--store-dir|--reporter|--loglevel|--config) [ $# -gt 0 ] && shift ;;
+      --version|-v|--help|-h) return ;;
+      -*|recursive|multi|m) ;; # pnpm -r install, pnpm recursive add
+      install|i|add|remove|rm|uninstall|un|update|up|upgrade|dlx|create|import|link|ln|unlink|dedupe|prune|fetch|install-test|it|approve-builds|rebuild|rb|patch|patch-commit) block "$R_PM"; return ;;
+      *) return ;; # pnpm test, pnpm run build, pnpm exec tsc: a script or a local binary
     esac
   done
 }
@@ -1488,18 +1509,21 @@ check_words() {
     echo|printf|grep|egrep|fgrep|rg|ag|ack|man|which|whereis|type|whatis|apropos|tldr|info|help|test|'['|'[['|hash|alias|complete) ;; # text about git
     *) later_git "$@" ;; # a wrapper it does not know: mise exec -- git push, uv run git push
   esac
-  case "$name" in npm|npx|yarn|bun|bunx) ;; *) return 0 ;; esac # only these can break the pnpm rule
-  pnpm_at "$edir" || return 0
+  case "$name" in npm|npx|yarn|bun|bunx|pnpm) ;; *) return 0 ;; esac # only these can break the pnpm or bun rule
+  lock_at "$edir" || return 0 # neither pnpm-lock.yaml nor bun.lock: not checked
+  case "$PM:$name" in pnpm:pnpm|bun:bun|bun:bunx) return 0 ;; esac # the repo's own tool
   case " $* " in *' -g '*|*' --global '*) return 0 ;; esac  # global installs (npm i -g pnpm)
+  if [ "$PM" = pnpm ]; then R_PM=$R_PNPM; else R_PM=$R_BUN; fi
   case "$name" in
     npx|bunx)
       for a in "$@"; do
         case "$a" in --version|-v|--help|-h) return 0 ;; -*) ;; *) break ;; esac
       done
-      block "$R_PNPM" ;;
+      block "$R_PM" ;;
     npm) check_npm "$@" ;;
     yarn) check_yarn "$@" ;;
     bun) check_bun "$@" ;;
+    pnpm) check_pnpm "$@" ;;
   esac
 }
 

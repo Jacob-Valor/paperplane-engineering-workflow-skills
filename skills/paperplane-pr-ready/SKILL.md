@@ -5,7 +5,7 @@ license: Proprietary
 compatibility: Requires git and gh authenticated to the paperplanehq GitHub org.
 metadata:
   author: paperplanehq
-  guide-version: "2026-11-14"
+  guide-version: "2026-11-24"
 ---
 
 # Pre-ready audit at Paper Plane

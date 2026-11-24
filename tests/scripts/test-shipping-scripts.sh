@@ -29,6 +29,19 @@ expect "pre-push passes a clean branch" "$clean" bash "$S/pre-push.sh"
 echo '{}' > package-lock.json; git add package-lock.json; git commit -qm lock
 expect "pre-push blocks a second lockfile" 1 bash "$S/pre-push.sh"
 git reset -q --hard HEAD~1
+for l in bun.lock bun.lockb yarn.lock; do
+  echo x > "$l"; git add "$l"; git commit -qm lock
+  expect "pre-push blocks $l in a pnpm repo" 1 bash "$S/pre-push.sh"
+  git reset -q --hard HEAD~1
+done
+git switch -qc chore/bun; git rm -q pnpm-lock.yaml; echo '{}' > bun.lock; git add bun.lock; git commit -qm "chore(bun): switch from pnpm to bun"
+expect "pre-push allows replacing pnpm-lock.yaml with bun.lock" "$clean" bash "$S/pre-push.sh"
+for l in package-lock.json pnpm-lock.yaml bun.lockb apps/web/yarn.lock; do
+  mkdir -p "$(dirname "$l")"; echo x > "$l"; git add "$l"; git commit -qm lock
+  expect "pre-push blocks $l in a bun repo" 1 bash "$S/pre-push.sh"
+  git reset -q --hard HEAD~1
+done
+git switch -q fix/x; git branch -qD chore/bun
 echo X=1 > .env.local; git add -f .env.local; git commit -qm env
 expect "pre-push blocks a .env file" 1 bash "$S/pre-push.sh"
 git reset -q --hard HEAD~1
